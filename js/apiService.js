@@ -26,7 +26,7 @@ const ApiService = {
 
   getSettings() {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const defaults = { webAppUrl: "", siteUrl: "https://smart-event-entry.netlify.app/index.html", autoSync: true, theme: "dark" };
+    const defaults = { webAppUrl: "", siteUrl: "https://event-management-system-chi-seven.vercel.app", autoSync: true, theme: "dark" };
     if (!data) return defaults;
     const parsed = JSON.parse(data);
     if (!parsed.siteUrl) parsed.siteUrl = defaults.siteUrl;

@@ -103,7 +103,7 @@ const EventManagerModule = {
       if (!isLocal && window.location.origin && !window.location.origin.startsWith("file")) {
         base = window.location.origin + window.location.pathname;
       } else {
-        base = "https://smart-event-entry.netlify.app/index.html";
+        base = "https://event-management-system-chi-seven.vercel.app/index.html";
       }
     }
 
