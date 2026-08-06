@@ -3,7 +3,7 @@
  * API SERVICE MODULE - Smart Event Entry Management System
  * ==========================================================================
  * Bridges Google Apps Script Web App API with local Storage fallback.
- * Allows seamless offline/standalone testing on Netlify and online cloud sync.
+ * Allows seamless offline/standalone testing on VERCEL and online cloud sync.
  */
 
 const STORAGE_KEYS = {
