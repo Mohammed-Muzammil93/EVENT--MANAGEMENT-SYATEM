@@ -17,18 +17,39 @@ const STORAGE_KEYS = {
 
 const ApiService = {
   /**
-   * Get Web App API URL from local settings
+   * Get Web App API URL from Settings, Global APP_CONFIG, or Vercel Environment Variables
    */
   getApiUrl() {
     const settings = this.getSettings();
-    return settings.webAppUrl || "";
+    if (settings.webAppUrl && settings.webAppUrl.trim() !== "") {
+      return settings.webAppUrl.trim();
+    }
+    if (typeof window !== "undefined") {
+      if (window.APP_CONFIG && window.APP_CONFIG.API_URL && window.APP_CONFIG.API_URL.trim() !== "") {
+        return window.APP_CONFIG.API_URL.trim();
+      }
+      const envUrl = window.VITE_API_URL || 
+                     window.NEXT_PUBLIC_API_URL || 
+                     window.REACT_APP_API_URL || 
+                     window.DATABASE_API_URL || 
+                     window.VERCEL_API_URL || 
+                     window.API_URL || "";
+      if (envUrl && envUrl.trim() !== "") {
+        return envUrl.trim();
+      }
+    }
+    return "";
   },
 
   getSettings() {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    const defaults = { webAppUrl: "", siteUrl: "https://event-management-system-chi-seven.vercel.app", autoSync: true, theme: "dark" };
+    const envApiUrl = (typeof window !== "undefined" && window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : "";
+    const defaults = { webAppUrl: envApiUrl, siteUrl: "https://event-management-system-chi-seven.vercel.app", autoSync: true, theme: "dark" };
     if (!data) return defaults;
     const parsed = JSON.parse(data);
+    if (!parsed.webAppUrl && envApiUrl) {
+      parsed.webAppUrl = envApiUrl;
+    }
     if (!parsed.siteUrl) parsed.siteUrl = defaults.siteUrl;
     // Auto-migrate: replace any old netlify domain cached in localStorage
     if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
