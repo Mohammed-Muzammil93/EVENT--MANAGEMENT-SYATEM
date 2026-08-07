@@ -46,7 +46,7 @@ const RegistrationModule = {
     const section = document.getElementById("reg-section").value;
     const mobile = document.getElementById("reg-mobile").value.trim();
     const email = document.getElementById("reg-email").value.trim();
-    const eventId = document.getElementById("reg-event-select").value;
+    const eventId = document.getElementById("reg-event-id").value;
 
     // Validation
     if (!fullName || !hallTicket || !branch || !year || !section || !mobile || !email || !eventId) {

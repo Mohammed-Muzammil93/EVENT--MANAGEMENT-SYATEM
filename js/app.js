@@ -99,53 +99,64 @@ const App = {
   async handleUrlQueryParams(eventsList) {
     const params = new URLSearchParams(window.location.search);
     const targetEventId = params.get("event") || params.get("eventId");
-    if (targetEventId) {
-      const select = document.getElementById("reg-event-select");
-      if (select) {
-        let events = eventsList || [];
-        let targetEv = events.find(e => e.id === targetEventId);
+    
+    console.log("[Event Resolution] Target Event ID from URL query parameters:", targetEventId);
 
-        // Fallback: If not found, fetch fresh events directly from backend
-        if (!targetEv) {
-          try {
-            const freshEvents = await ApiService.getEvents();
-            targetEv = freshEvents.find(e => e.id === targetEventId);
-            if (targetEv) {
-              events = freshEvents;
-              EventManagerModule.populateEventDropdowns(events);
-            }
-          } catch (err) {
-            console.error("Error fetching fresh events list:", err);
-          }
-        }
+    const regCard = document.getElementById("registration-card");
+    const invalidCard = document.getElementById("invalid-event-card");
 
+    if (!targetEventId) {
+      console.log("[Event Resolution] No Event ID parameter provided in URL.");
+      if (regCard) regCard.classList.add("d-none");
+      if (invalidCard) invalidCard.classList.remove("d-none");
+      return;
+    }
+
+    let events = eventsList || [];
+    let targetEv = events.find(e => e.id === targetEventId);
+    console.log("[Event Resolution] Initial search in cached events list. Found:", targetEv ? targetEv.title : "Not found");
+
+    if (!targetEv) {
+      console.log("[Event Resolution] Event not found in cached list. Fetching fresh events from backend API...");
+      try {
+        const freshEvents = await ApiService.getEvents();
+        console.log("[Event Resolution] API response (fresh events list):", freshEvents);
+        targetEv = freshEvents.find(e => e.id === targetEventId);
+        console.log("[Event Resolution] Search in fresh events list. Found:", targetEv ? targetEv.title : "Not found");
         if (targetEv) {
-          select.value = targetEventId;
-          this.showToast("Direct Event Link Detected", `Auto-selected: ${targetEv.title}`, "info");
-          
-          // Disable event selection so the user cannot accidentally choose another event
-          select.disabled = true;
-          select.classList.add("bg-glass-disabled");
-          
-          // Add input helper for form state safety
-          let hiddenInput = document.getElementById("reg-event-select-hidden");
-          if (!hiddenInput) {
-            hiddenInput = document.createElement("input");
-            hiddenInput.type = "hidden";
-            hiddenInput.id = "reg-event-select-hidden";
-            hiddenInput.value = targetEventId;
-            select.parentNode.appendChild(hiddenInput);
-          }
-        } else {
-          // If the event ID was in the URL but not found in the database, display a helpful option in the dropdown and notify the user
-          select.innerHTML = `<option value="">⚠️ Event Not Found (ID: ${targetEventId})</option>`;
-          select.value = "";
-          select.disabled = true;
-          select.classList.add("bg-glass-disabled");
-          
-          this.showToast("Event Not Found", `The shared event (ID: ${targetEventId}) does not exist, was deleted, or the database connection failed. Please contact the administrator.`, "danger");
+          events = freshEvents;
+          EventManagerModule.populateEventDropdowns(events);
         }
+      } catch (err) {
+        console.error("[Event Resolution] Error fetching fresh events list from backend:", err);
       }
+    }
+
+    if (targetEv) {
+      console.log("[Event Resolution] Event successfully resolved:", targetEv);
+      
+      const hiddenInput = document.getElementById("reg-event-id");
+      if (hiddenInput) {
+        hiddenInput.value = targetEventId;
+      }
+
+      // Update active event details in UI
+      const titleEl = document.getElementById("active-event-title");
+      const dateEl = document.getElementById("active-event-date");
+      const timeEl = document.getElementById("active-event-time");
+      const venueEl = document.getElementById("active-event-venue");
+
+      if (titleEl) titleEl.innerText = targetEv.title;
+      if (dateEl) dateEl.innerText = targetEv.date || "-";
+      if (timeEl) timeEl.innerText = targetEv.time || "-";
+      if (venueEl) venueEl.innerText = targetEv.venue || "-";
+
+      if (regCard) regCard.classList.remove("d-none");
+      if (invalidCard) invalidCard.classList.add("d-none");
+    } else {
+      console.warn("[Event Resolution] Event ID was provided but could not be found or connection failed.");
+      if (regCard) regCard.classList.add("d-none");
+      if (invalidCard) invalidCard.classList.remove("d-none");
     }
   },
 

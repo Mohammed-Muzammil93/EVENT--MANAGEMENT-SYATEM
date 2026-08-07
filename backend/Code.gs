@@ -30,12 +30,13 @@ const SHEET_NAMES = {
 function doGet(e) {
   try {
     const action = e.parameter.action || "getDashboardStats";
-    const eventId = e.parameter.eventId || "";
+    const eventId = e.parameter.eventId || e.parameter.event || e.parameter.id || "";
     let data;
 
     switch (action) {
       case "getEvents":
-        data = getEventsData();
+      case "getEvent":
+        data = getEventsData(eventId);
         break;
       case "getRegistrations":
         data = getRegistrationsData(eventId);
