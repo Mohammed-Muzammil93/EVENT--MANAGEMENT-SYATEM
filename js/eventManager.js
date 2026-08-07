@@ -263,6 +263,9 @@ const EventManagerModule = {
         ev.venue = venue;
         ev.category = category;
         ev.maxSeats = maxSeats;
+        
+        // Sync to cloud
+        ApiService.syncUpdateEvent(ev);
       }
       App.showToast("Success", "Event updated successfully!", "success");
     } else {
@@ -278,6 +281,10 @@ const EventManagerModule = {
         createdAt: new Date().toISOString()
       };
       events.push(newEv);
+      
+      // Sync to cloud
+      ApiService.syncCreateEvent(newEv);
+      
       App.showToast("Event Created!", "Event created successfully! Opening share & poster options...", "success");
       setTimeout(() => {
         this.showEventQrModal(newEv.id);
@@ -305,6 +312,10 @@ const EventManagerModule = {
     if (ev) {
       ev.status = ev.status === "Open" ? "Closed" : "Open";
       ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
+      
+      // Sync to cloud
+      ApiService.syncUpdateEvent(ev);
+      
       App.showToast("Updated", `Event status set to ${ev.status}`, "info");
       this.renderEventsList();
     }
@@ -360,6 +371,9 @@ const EventManagerModule = {
     // Remove event from list
     events = events.filter(e => e.id !== this.pendingDeleteId);
     ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
+
+    // Sync to cloud
+    ApiService.syncDeleteEvent(this.pendingDeleteId);
 
     App.showToast("Event Deleted", "Event and data safely archived & removed.", "warning");
 

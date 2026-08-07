@@ -278,7 +278,7 @@ function handleMarkAttendance(data) {
 function handleCreateEvent(data) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAMES.EVENTS);
-  const eventId = "EVT-" + Date.now().toString(36).toUpperCase();
+  const eventId = data.id || "EVT-" + Date.now().toString(36).toUpperCase();
 
   sheet.appendRow([
     eventId,
@@ -287,12 +287,58 @@ function handleCreateEvent(data) {
     data.time,
     data.venue,
     data.category || "General",
-    "Open",
+    data.status || "Open",
     data.maxSeats || 500,
     new Date().toISOString()
   ]);
 
   return { status: "success", message: "Event created successfully!", eventId: eventId };
+}
+
+/**
+ * Handle Event Update
+ */
+function handleUpdateEvent(data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.EVENTS);
+  if (!sheet) return { status: "error", message: "Events sheet not found" };
+  
+  const range = sheet.getDataRange();
+  const values = range.getValues();
+  
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][0] === data.id) {
+      sheet.getRange(i + 1, 2).setValue(data.title);
+      sheet.getRange(i + 1, 3).setValue(data.date);
+      sheet.getRange(i + 1, 4).setValue(data.time);
+      sheet.getRange(i + 1, 5).setValue(data.venue);
+      sheet.getRange(i + 1, 6).setValue(data.category);
+      sheet.getRange(i + 1, 7).setValue(data.status);
+      sheet.getRange(i + 1, 8).setValue(data.maxSeats);
+      return { status: "success", message: "Event updated successfully!" };
+    }
+  }
+  return { status: "error", message: "Event not found: " + data.id };
+}
+
+/**
+ * Handle Event Deletion
+ */
+function handleDeleteEvent(eventId) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAMES.EVENTS);
+  if (!sheet) return { status: "error", message: "Events sheet not found" };
+  
+  const range = sheet.getDataRange();
+  const values = range.getValues();
+  
+  for (let i = 1; i < values.length; i++) {
+    if (values[i][0] === eventId) {
+      sheet.deleteRow(i + 1);
+      return { status: "success", message: "Event deleted successfully!" };
+    }
+  }
+  return { status: "error", message: "Event not found: " + eventId };
 }
 
 /**

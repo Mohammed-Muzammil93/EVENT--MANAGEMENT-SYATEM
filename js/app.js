@@ -44,10 +44,20 @@ const DashboardModule = {
 };
 
 const App = {
-  init() {
+  async init() {
     this.applyTheme(ApiService.getSettings().theme || "dark");
     this.bindEvents();
     this.seedInitialData();
+
+    // Clean up old demo events from local storage cache
+    const localEvents = ApiService.getLocal(STORAGE_KEYS.EVENTS, []);
+    const demoIds = ["EVT-TECHFEST-2026", "EVT-HACKATHON-26", "EVT-CULTURAL-26"];
+    if (Array.isArray(localEvents)) {
+      const cleaned = localEvents.filter(e => !demoIds.includes(e.id));
+      if (cleaned.length !== localEvents.length) {
+        ApiService.saveLocal(STORAGE_KEYS.EVENTS, cleaned);
+      }
+    }
 
     // Init submodules
     RegistrationModule.init();
@@ -55,27 +65,69 @@ const App = {
 
     // Default View
     this.switchView("student-portal");
-    DashboardModule.refresh();
-    EventManagerModule.renderEventsList();
     this.updateAuthUI();
-    this.handleUrlQueryParams();
+
+    // Load events from backend/storage before rendering forms
+    App.showLoader(true);
+    let events = [];
+    try {
+      events = await ApiService.getEvents();
+    } catch (err) {
+      console.warn("Failed loading events on startup:", err);
+    }
+    App.showLoader(false);
+
+    // Populate all dropdowns
+    EventManagerModule.populateEventDropdowns(events);
+
+    // Process direct URL event parameter
+    await this.handleUrlQueryParams(events);
   },
 
-  handleUrlQueryParams() {
+  async handleUrlQueryParams(eventsList) {
     const params = new URLSearchParams(window.location.search);
     const targetEventId = params.get("event") || params.get("eventId");
     if (targetEventId) {
-      setTimeout(async () => {
-        const select = document.getElementById("reg-event-select");
-        if (select) {
-          select.value = targetEventId;
-          const events = await ApiService.getEvents();
-          const targetEv = events.find(e => e.id === targetEventId);
-          if (targetEv) {
-            this.showToast("Direct Event Link Detected", `Auto-selected: ${targetEv.title}`, "info");
+      const select = document.getElementById("reg-event-select");
+      if (select) {
+        let events = eventsList || [];
+        let targetEv = events.find(e => e.id === targetEventId);
+
+        // Fallback: If not found, fetch fresh events directly from backend
+        if (!targetEv) {
+          try {
+            const freshEvents = await ApiService.getEvents();
+            targetEv = freshEvents.find(e => e.id === targetEventId);
+            if (targetEv) {
+              events = freshEvents;
+              EventManagerModule.populateEventDropdowns(events);
+            }
+          } catch (err) {
+            console.error("Error fetching fresh events list:", err);
           }
         }
-      }, 400);
+
+        if (targetEv) {
+          select.value = targetEventId;
+          this.showToast("Direct Event Link Detected", `Auto-selected: ${targetEv.title}`, "info");
+          
+          // Disable event selection so the user cannot accidentally choose another event
+          select.disabled = true;
+          select.classList.add("bg-glass-disabled");
+          
+          // Add input helper for form state safety
+          let hiddenInput = document.getElementById("reg-event-select-hidden");
+          if (!hiddenInput) {
+            hiddenInput = document.createElement("input");
+            hiddenInput.type = "hidden";
+            hiddenInput.id = "reg-event-select-hidden";
+            hiddenInput.value = targetEventId;
+            select.parentNode.appendChild(hiddenInput);
+          }
+        } else {
+          this.showToast("Event Not Found", "The event link you opened might be invalid or deleted.", "danger");
+        }
+      }
     }
   },
 
@@ -155,12 +207,22 @@ const App = {
       if (webAppInput) webAppInput.value = currentSettings.webAppUrl || "";
       if (siteUrlInput) siteUrlInput.value = currentSettings.siteUrl || "";
 
-      settingsForm.addEventListener("submit", (e) => {
+      settingsForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const webAppUrl = webAppInput ? webAppInput.value.trim() : "";
         const siteUrl = siteUrlInput ? siteUrlInput.value.trim() : "";
+        
+        App.showLoader(true);
         ApiService.saveSettings({ webAppUrl, siteUrl, theme: document.documentElement.getAttribute("data-theme") });
-        App.showToast("Settings Saved", "System settings & domain URL updated!", "success");
+        
+        try {
+          const events = await ApiService.getEvents();
+          EventManagerModule.populateEventDropdowns(events);
+          App.showToast("Settings Saved", "System settings & domain URL updated! Events synced from Google Sheets.", "success");
+        } catch (err) {
+          App.showToast("Sync Warning", "Settings saved, but failed to fetch events from Google Sheets Web App.", "warning");
+        }
+        App.showLoader(false);
       });
     }
   },

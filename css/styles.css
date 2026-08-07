@@ -547,3 +547,12 @@ body {
     height: 95px;
   }
 }
+
+/* Disabled select style for direct event links */
+.form-select.bg-glass-disabled {
+  background-color: rgba(30, 41, 59, 0.4) !important;
+  color: var(--text-secondary) !important;
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  cursor: not-allowed;
+  opacity: 0.8;
+}

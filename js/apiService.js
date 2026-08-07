@@ -184,6 +184,42 @@ const ApiService = {
     };
   },
 
+  async syncCreateEvent(eventData) {
+    const apiUrl = this.getApiUrl();
+    if (apiUrl) {
+      fetch(apiUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "createEvent", data: eventData })
+      }).catch(err => console.log("Cloud sync error:", err));
+    }
+  },
+
+  async syncUpdateEvent(eventData) {
+    const apiUrl = this.getApiUrl();
+    if (apiUrl) {
+      fetch(apiUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "updateEvent", data: eventData })
+      }).catch(err => console.log("Cloud sync error:", err));
+    }
+  },
+
+  async syncDeleteEvent(eventId) {
+    const apiUrl = this.getApiUrl();
+    if (apiUrl) {
+      fetch(apiUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deleteEvent", eventId: eventId })
+      }).catch(err => console.log("Cloud sync error:", err));
+    }
+  },
+
   /**
    * Storage Helpers
    */
@@ -200,40 +236,6 @@ const ApiService = {
    * Default Seed Data
    */
   getDefaultEvents() {
-    return [
-      {
-        id: "EVT-TECHFEST-2026",
-        title: "Annual TechFest 2026",
-        date: "2026-08-15",
-        time: "09:30 AM",
-        venue: "Main Auditorium",
-        category: "Technical",
-        status: "Open",
-        maxSeats: 800,
-        createdAt: "2026-08-01T10:00:00Z"
-      },
-      {
-        id: "EVT-HACKATHON-26",
-        title: "24-Hour AI Hackathon",
-        date: "2026-08-20",
-        time: "10:00 AM",
-        venue: "CS Innovation Lab",
-        category: "Hackathon",
-        status: "Open",
-        maxSeats: 300,
-        createdAt: "2026-08-02T12:00:00Z"
-      },
-      {
-        id: "EVT-CULTURAL-26",
-        title: "Grand Cultural Night",
-        date: "2026-08-28",
-        time: "05:00 PM",
-        venue: "Open Air Theatre",
-        category: "Cultural",
-        status: "Open",
-        maxSeats: 1500,
-        createdAt: "2026-08-03T14:00:00Z"
-      }
-    ];
+    return [];
   }
 };
