@@ -30,6 +30,11 @@ const ApiService = {
     if (!data) return defaults;
     const parsed = JSON.parse(data);
     if (!parsed.siteUrl) parsed.siteUrl = defaults.siteUrl;
+    // Auto-migrate: replace any old netlify domain cached in localStorage
+    if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
+      parsed.siteUrl = defaults.siteUrl;
+      this.saveSettings(parsed);
+    }
     return parsed;
   },
 
