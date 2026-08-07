@@ -27,16 +27,49 @@ const SHEET_NAMES = {
 /**
  * HTTP GET Router
  */
+function checkDatabaseConnection() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    return ss !== null;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * HTTP GET Router
+ */
 function doGet(e) {
   try {
     const action = e.parameter.action || "getDashboardStats";
     const eventId = e.parameter.eventId || e.parameter.event || e.parameter.id || "";
+    
+    console.log("[Server-GET] Received request. Action: " + action + ", Event ID: " + eventId);
+
+    const dbConnected = checkDatabaseConnection();
+    console.log("[Server-GET] Database Connection status: " + (dbConnected ? "CONNECTED" : "FAILED"));
+
+    if (!dbConnected) {
+      console.error("[Server-GET] Spreadsheet connection failed.");
+      return createJsonResponse({ status: "error", code: "DB_CONNECTION_FAIL", message: "Database connection failed." });
+    }
+
     let data;
 
     switch (action) {
       case "getEvents":
-      case "getEvent":
         data = getEventsData(eventId);
+        console.log("[Server-GET] getEvents queried. Found items: " + (data ? data.length : 0));
+        break;
+      case "getEvent":
+        const matchedEvents = getEventsData(eventId);
+        console.log("[Server-GET] getEvent query result count: " + (matchedEvents ? matchedEvents.length : 0));
+        if (matchedEvents && matchedEvents.length > 0) {
+          data = { status: "success", event: matchedEvents[0] };
+        } else {
+          console.warn("[Server-GET] Event not found for ID: " + eventId);
+          data = { status: "error", code: "EVENT_NOT_FOUND", message: "Event not found in production database." };
+        }
         break;
       case "getRegistrations":
         data = getRegistrationsData(eventId);
@@ -59,6 +92,7 @@ function doGet(e) {
 
     return createJsonResponse(data);
   } catch (error) {
+    console.error("[Server-GET] Catch Block Error: " + error.toString());
     return createJsonResponse({ status: "error", message: error.toString() });
   }
 }
@@ -345,27 +379,34 @@ function handleDeleteEvent(eventId) {
 /**
  * Get All Events Data
  */
-function getEventsData() {
+function getEventsData(eventId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = ss.getSheetByName(SHEET_NAMES.EVENTS);
-  if (!sheet) return [];
+  if (!sheet) {
+    console.error("[Server-Query] Events sheet not found.");
+    return [];
+  }
   const rows = sheet.getDataRange().getValues();
   if (rows.length <= 1) return [];
 
-  const headers = rows[0];
   const result = [];
+  const searchId = eventId ? eventId.trim().toUpperCase() : "";
+  console.log("[Server-Query] Querying events database. Filter ID: " + (searchId || "NONE"));
   for (let i = 1; i < rows.length; i++) {
-    result.push({
-      id: rows[i][0],
-      title: rows[i][1],
-      date: rows[i][2],
-      time: rows[i][3],
-      venue: rows[i][4],
-      category: rows[i][5],
-      status: rows[i][6],
-      maxSeats: rows[i][7],
-      createdAt: rows[i][8]
-    });
+    const rowId = rows[i][0] ? rows[i][0].toString().trim().toUpperCase() : "";
+    if (!searchId || rowId === searchId) {
+      result.push({
+        id: rows[i][0],
+        title: rows[i][1],
+        date: rows[i][2],
+        time: rows[i][3],
+        venue: rows[i][4],
+        category: rows[i][5],
+        status: rows[i][6],
+        maxSeats: rows[i][7],
+        createdAt: rows[i][8]
+      });
+    }
   }
   return result;
 }

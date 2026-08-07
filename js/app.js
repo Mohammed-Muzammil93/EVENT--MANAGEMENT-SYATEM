@@ -96,63 +96,70 @@ const App = {
     await this.handleUrlQueryParams(events);
   },
 
-  async handleUrlQueryParams(eventsList) {
+  async handleUrlQueryParams() {
     const params = new URLSearchParams(window.location.search);
     const targetEventId = params.get("event") || params.get("eventId");
-    console.log("[EventLookup] URL query params:", window.location.search);
-    console.log("[EventLookup] Target Event ID from URL:", targetEventId || "(none)");
+    console.log("[EventLookup] URL Query String:", window.location.search);
+    console.log("[EventLookup] Extracted Event ID:", targetEventId || "(none)");
+
     if (targetEventId) {
       const select = document.getElementById("reg-event-select");
       if (select) {
-        let events = eventsList || [];
-        console.log("[EventLookup] Searching in initial events list. Count:", events.length, "IDs:", events.map(e => e.id));
-        let targetEv = events.find(e => e.id === targetEventId);
-        console.log("[EventLookup] Initial search result:", targetEv ? `FOUND - "${targetEv.title}"` : "NOT FOUND");
+        // Set temporary loading state in select element
+        select.innerHTML = `<option value="">⌛ Fetching event ${targetEventId} from database...</option>`;
+        select.disabled = true;
+        select.classList.add("bg-glass-disabled");
 
-        // Fallback: If not found, fetch fresh events directly from backend
-        if (!targetEv) {
-          console.log("[EventLookup] Attempting fresh fetch from backend API...");
-          try {
-            const freshEvents = await ApiService.getEvents();
-            console.log("[EventLookup] Fresh events fetched. Count:", freshEvents.length, "IDs:", freshEvents.map(e => e.id));
-            targetEv = freshEvents.find(e => e.id === targetEventId);
-            console.log("[EventLookup] Fresh search result:", targetEv ? `FOUND - "${targetEv.title}"` : "NOT FOUND");
-            if (targetEv) {
-              events = freshEvents;
-              EventManagerModule.populateEventDropdowns(events);
-            }
-          } catch (err) {
-            console.error("[EventLookup] Error fetching fresh events list:", err);
-          }
-        }
+        console.log("[EventLookup] Initiating direct database lookup for Event ID:", targetEventId);
+        
+        App.showLoader(true);
+        const result = await ApiService.getEventById(targetEventId);
+        App.showLoader(false);
 
-        if (targetEv) {
-          select.value = targetEventId;
-          this.showToast("Direct Event Link Detected", `Auto-selected: ${targetEv.title}`, "info");
-          
-          // Disable event selection so the user cannot accidentally choose another event
+        console.log("[EventLookup] Database query response:", result);
+
+        if (result && result.status === "success" && result.event) {
+          const ev = result.event;
+          console.log("[EventLookup] SUCCESS: Resolved event from database:", ev);
+
+          // Populate select dropdown with the exact target event
+          select.innerHTML = `<option value="${ev.id}">${EventManagerModule.escapeHtml(ev.title)} (${ev.date})</option>`;
+          select.value = ev.id;
           select.disabled = true;
           select.classList.add("bg-glass-disabled");
-          
-          // Add input helper for form state safety
+
+          this.showToast("Direct Event Link Detected", `Auto-selected: ${ev.title}`, "info");
+
+          // Add input helper for form submit safety
           let hiddenInput = document.getElementById("reg-event-select-hidden");
           if (!hiddenInput) {
             hiddenInput = document.createElement("input");
             hiddenInput.type = "hidden";
             hiddenInput.id = "reg-event-select-hidden";
-            hiddenInput.value = targetEventId;
+            hiddenInput.value = ev.id;
             select.parentNode.appendChild(hiddenInput);
+          } else {
+            hiddenInput.value = ev.id;
           }
-          console.log("[EventLookup] SUCCESS: Event auto-selected in dropdown:", targetEv.title);
-        } else {
-          // If the event ID was in the URL but not found in the database, display a helpful option in the dropdown and notify the user
-          select.innerHTML = `<option value="">⚠️ Event Not Found (ID: ${targetEventId})</option>`;
+        } else if (result && result.code === "DB_CONNECTION_FAIL") {
+          console.error("[EventLookup] FAILURE: Database connection failed.");
+          select.innerHTML = `<option value="">⚠️ Database connection failed.</option>`;
           select.value = "";
           select.disabled = true;
-          select.classList.add("bg-glass-disabled");
-          
-          this.showToast("Event Not Found", `The shared event (ID: ${targetEventId}) does not exist, was deleted, or the database connection failed. Please contact the administrator.`, "danger");
-          console.error("[EventLookup] FAILURE: Event not found. ID:", targetEventId, "| Backend URL configured:", !!ApiService.getApiUrl());
+          this.showToast("Database Connection Failed", "Unable to connect to the production database. Please check your connection or contact the organizer.", "danger");
+        } else if (result && result.code === "NO_API_URL") {
+          console.error("[EventLookup] FAILURE: API URL not configured.");
+          select.innerHTML = `<option value="">⚠️ Database connection failed (API URL not configured).</option>`;
+          select.value = "";
+          select.disabled = true;
+          this.showToast("API Unconfigured", "Database API URL is not configured.", "danger");
+        } else {
+          const errMsg = (result && result.message) ? result.message : "Event not found in production database.";
+          console.error("[EventLookup] FAILURE:", errMsg);
+          select.innerHTML = `<option value="">⚠️ ${errMsg}</option>`;
+          select.value = "";
+          select.disabled = true;
+          this.showToast("Event Not Found", errMsg, "danger");
         }
       }
     }

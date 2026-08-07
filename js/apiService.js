@@ -80,8 +80,35 @@ const ApiService = {
   },
 
   /**
-   * Register Student
+   * Fetch Single Event Directly from Database by ID
    */
+  async getEventById(eventId) {
+    const apiUrl = this.getApiUrl();
+    console.log("[EventSync] getEventById() called for Event ID:", eventId, "| API URL:", apiUrl || "(not configured)");
+    if (apiUrl) {
+      try {
+        const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
+        console.log("[EventSync] Fetching event directly from:", fetchUrl);
+        const response = await fetch(fetchUrl);
+        console.log("[EventSync] API response status:", response.status, response.statusText);
+        const text = await response.text();
+        console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
+        try {
+          const json = JSON.parse(text);
+          return json;
+        } catch (parseErr) {
+          console.error("[EventSync] Failed to parse API response JSON:", parseErr);
+          return { status: "error", code: "PARSE_ERROR", message: "Failed to parse database response." };
+        }
+      } catch (err) {
+        console.error("[EventSync] Direct event fetch FAILED:", err.message || err);
+        return { status: "error", code: "DB_CONNECTION_FAIL", message: "Database connection failed." };
+      }
+    } else {
+      console.warn("[EventSync] No API URL configured for direct event lookup.");
+      return { status: "error", code: "NO_API_URL", message: "Database connection failed (API URL not configured)." };
+    }
+  },
   async registerStudent(studentData) {
     // 1. Check duplicate locally first
     const regs = this.getLocal(STORAGE_KEYS.REGISTRATIONS, []);
