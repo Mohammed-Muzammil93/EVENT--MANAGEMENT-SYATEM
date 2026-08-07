@@ -115,65 +115,64 @@ const App = {
       }
     }
 
+    const banner = document.getElementById("reg-event-banner");
+    const bannerTitle = document.getElementById("reg-event-banner-title");
+    const bannerMeta = document.getElementById("reg-event-banner-meta");
+    const errorCard = document.getElementById("reg-event-error");
+    const errorText = document.getElementById("reg-event-error-text");
+    const select = document.getElementById("reg-event-select");
+
+    if (!targetEventId) {
+      console.warn("[EventLookup] No event parameter found in URL.");
+      if (banner) banner.classList.add("d-none");
+      if (errorCard) errorCard.classList.remove("d-none");
+      if (errorText) errorText.innerText = "Invalid event link.";
+      if (select) select.value = "";
+      this.showToast("Invalid Link", "No event ID found in link. Please use a valid event link.", "warning");
+      return;
+    }
+
     if (targetEventId) {
-      const select = document.getElementById("reg-event-select");
-      if (select) {
-        // Set temporary loading state in select element
-        select.innerHTML = `<option value="">⌛ Fetching event ${targetEventId} from database...</option>`;
-        select.disabled = true;
-        select.classList.add("bg-glass-disabled");
+      console.log("[EventLookup] Initiating direct database lookup for Event ID:", targetEventId);
+      
+      App.showLoader(true);
+      const result = await ApiService.getEventById(targetEventId);
+      App.showLoader(false);
 
-        console.log("[EventLookup] Initiating direct database lookup for Event ID:", targetEventId);
-        
-        App.showLoader(true);
-        const result = await ApiService.getEventById(targetEventId);
-        App.showLoader(false);
+      console.log("[EventLookup] Database query response:", result);
 
-        console.log("[EventLookup] Database query response:", result);
+      if (result && result.status === "success" && result.event) {
+        const ev = result.event;
+        console.log("[EventLookup] SUCCESS: Resolved event from database:", ev);
 
-        if (result && result.status === "success" && result.event) {
-          const ev = result.event;
-          console.log("[EventLookup] SUCCESS: Resolved event from database:", ev);
+        if (select) select.value = ev.id;
 
-          // Populate select dropdown with the exact target event
-          select.innerHTML = `<option value="${ev.id}">${EventManagerModule.escapeHtml(ev.title)} (${ev.date})</option>`;
-          select.value = ev.id;
-          select.disabled = true;
-          select.classList.add("bg-glass-disabled");
+        if (bannerTitle) bannerTitle.innerText = ev.title;
+        if (bannerMeta) bannerMeta.innerText = `📅 ${ev.date} ${ev.time ? 'at ' + ev.time : ''} • 📍 ${ev.venue}`;
+        if (banner) banner.classList.remove("d-none");
+        if (errorCard) errorCard.classList.add("d-none");
 
-          this.showToast("Direct Event Link Detected", `Auto-selected: ${ev.title}`, "info");
+        this.showToast("Event Loaded", `Ready for registration: ${ev.title}`, "info");
 
-          // Add input helper for form submit safety
-          let hiddenInput = document.getElementById("reg-event-select-hidden");
-          if (!hiddenInput) {
-            hiddenInput = document.createElement("input");
-            hiddenInput.type = "hidden";
-            hiddenInput.id = "reg-event-select-hidden";
-            hiddenInput.value = ev.id;
-            select.parentNode.appendChild(hiddenInput);
-          } else {
-            hiddenInput.value = ev.id;
-          }
-        } else if (result && result.code === "DB_CONNECTION_FAIL") {
-          console.error("[EventLookup] FAILURE: Database connection failed.");
-          select.innerHTML = `<option value="">⚠️ Database connection failed.</option>`;
-          select.value = "";
-          select.disabled = true;
-          this.showToast("Database Connection Failed", "Unable to connect to the production database. Please check your connection or contact the organizer.", "danger");
-        } else if (result && result.code === "NO_API_URL") {
-          console.error("[EventLookup] FAILURE: API URL not configured.");
-          select.innerHTML = `<option value="">⚠️ Database connection failed (API URL not configured).</option>`;
-          select.value = "";
-          select.disabled = true;
-          this.showToast("API Unconfigured", "Database API URL is not configured.", "danger");
-        } else {
-          const errMsg = (result && result.message) ? result.message : "Event not found in production database.";
-          console.error("[EventLookup] FAILURE:", errMsg);
-          select.innerHTML = `<option value="">⚠️ ${errMsg}</option>`;
-          select.value = "";
-          select.disabled = true;
-          this.showToast("Event Not Found", errMsg, "danger");
+        // Maintain hidden helper input for form state safety
+        let hiddenInput = document.getElementById("reg-event-select-hidden");
+        if (!hiddenInput && select) {
+          hiddenInput = document.createElement("input");
+          hiddenInput.type = "hidden";
+          hiddenInput.id = "reg-event-select-hidden";
+          hiddenInput.value = ev.id;
+          select.parentNode.appendChild(hiddenInput);
+        } else if (hiddenInput) {
+          hiddenInput.value = ev.id;
         }
+      } else {
+        const errMsg = "Invalid event link.";
+        console.error("[EventLookup] FAILURE:", result ? result.message : errMsg);
+        if (banner) banner.classList.add("d-none");
+        if (errorCard) errorCard.classList.remove("d-none");
+        if (errorText) errorText.innerText = errMsg;
+        if (select) select.value = "";
+        this.showToast("Invalid Event Link", errMsg, "danger");
       }
     }
   },

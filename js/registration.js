@@ -46,10 +46,19 @@ const RegistrationModule = {
     const section = document.getElementById("reg-section").value;
     const mobile = document.getElementById("reg-mobile").value.trim();
     const email = document.getElementById("reg-email").value.trim();
-    const eventId = document.getElementById("reg-event-select").value;
+    let eventId = document.getElementById("reg-event-select") ? document.getElementById("reg-event-select").value : "";
+    if (!eventId) {
+      const hiddenInput = document.getElementById("reg-event-select-hidden");
+      if (hiddenInput) eventId = hiddenInput.value;
+    }
 
     // Validation
-    if (!fullName || !hallTicket || !branch || !year || !section || !mobile || !email || !eventId) {
+    if (!eventId) {
+      App.showToast("Invalid Link", "Invalid event link. Registration cannot proceed.", "danger");
+      return;
+    }
+
+    if (!fullName || !hallTicket || !branch || !year || !section || !mobile || !email) {
       App.showToast("Validation Error", "Please fill in all required fields!", "danger");
       return;
     }
