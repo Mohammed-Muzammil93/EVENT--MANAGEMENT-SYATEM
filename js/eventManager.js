@@ -258,6 +258,10 @@ const EventManagerModule = {
       return;
     }
 
+    if (!ApiService.getApiUrl()) {
+      App.showToast("Settings Required", "⚠️ Web App API URL is not set in Settings! Please configure it in Settings so events sync to cloud and shared links work for guests.", "warning");
+    }
+
     const events = ApiService.getLocal(STORAGE_KEYS.EVENTS, ApiService.getDefaultEvents());
 
     App.showLoader(true);

@@ -99,8 +99,21 @@ const App = {
   async handleUrlQueryParams() {
     const params = new URLSearchParams(window.location.search);
     const targetEventId = params.get("event") || params.get("eventId");
+    const backendUrl = params.get("backend") || params.get("backendUrl");
+
     console.log("[EventLookup] URL Query String:", window.location.search);
     console.log("[EventLookup] Extracted Event ID:", targetEventId || "(none)");
+    console.log("[EventLookup] Extracted Backend URL:", backendUrl || "(none)");
+
+    // Auto-configure API URL if passed in link parameter
+    if (backendUrl) {
+      const currentSettings = ApiService.getSettings();
+      if (currentSettings.webAppUrl !== backendUrl) {
+        currentSettings.webAppUrl = backendUrl;
+        ApiService.saveSettings(currentSettings);
+        console.log("[EventLookup] Auto-configured backend Web App URL from link parameter:", backendUrl);
+      }
+    }
 
     if (targetEventId) {
       const select = document.getElementById("reg-event-select");
