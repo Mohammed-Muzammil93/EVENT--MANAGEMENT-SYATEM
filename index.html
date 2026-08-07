@@ -147,28 +147,11 @@
             <form id="student-reg-form" onsubmit="RegistrationModule.handleFormSubmit(event)">
               <div class="row g-3">
 
-                <!-- Event Details Header & Read-Only Banner -->
-                <div class="col-12" id="reg-event-container">
-                  <!-- Read-only Event Banner (Shown when valid event is loaded) -->
-                  <div id="reg-event-banner" class="glass-card p-3 mb-2 d-none border border-primary-glow">
-                    <div class="d-flex align-items-center justify-content-between">
-                      <div>
-                        <span class="text-xs text-uppercase text-secondary fw-semibold d-block mb-1">Target Event</span>
-                        <h4 id="reg-event-banner-title" class="font-weight-bold text-primary mb-0"></h4>
-                        <small id="reg-event-banner-meta" class="text-secondary"></small>
-                      </div>
-                      <span class="badge bg-success-soft text-success px-3 py-2 rounded-pill"><i class="bi bi-check-circle-fill me-1"></i> Active Event</span>
-                    </div>
-                  </div>
-
-                  <!-- Error Alert Card (Shown if event link is missing or invalid) -->
-                  <div id="reg-event-error" class="alert alert-danger d-none" role="alert">
-                    <i class="bi bi-exclamation-triangle-fill me-2"></i><span id="reg-event-error-text">Invalid event link.</span>
-                  </div>
-
-                  <!-- Hidden Select Element to maintain internal eventId storage -->
-                  <select id="reg-event-select" class="form-select d-none">
-                    <option value="">No Event Selected</option>
+                <!-- Event Selection -->
+                <div class="col-12">
+                  <label for="reg-event-select" class="form-label">Select Target Event <span class="text-danger">*</span></label>
+                  <select id="reg-event-select" class="form-select" required>
+                    <option value="">Loading events...</option>
                   </select>
                 </div>
 
