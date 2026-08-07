@@ -99,23 +99,30 @@ const App = {
   async handleUrlQueryParams(eventsList) {
     const params = new URLSearchParams(window.location.search);
     const targetEventId = params.get("event") || params.get("eventId");
+    console.log("[EventLookup] URL query params:", window.location.search);
+    console.log("[EventLookup] Target Event ID from URL:", targetEventId || "(none)");
     if (targetEventId) {
       const select = document.getElementById("reg-event-select");
       if (select) {
         let events = eventsList || [];
+        console.log("[EventLookup] Searching in initial events list. Count:", events.length, "IDs:", events.map(e => e.id));
         let targetEv = events.find(e => e.id === targetEventId);
+        console.log("[EventLookup] Initial search result:", targetEv ? `FOUND - "${targetEv.title}"` : "NOT FOUND");
 
         // Fallback: If not found, fetch fresh events directly from backend
         if (!targetEv) {
+          console.log("[EventLookup] Attempting fresh fetch from backend API...");
           try {
             const freshEvents = await ApiService.getEvents();
+            console.log("[EventLookup] Fresh events fetched. Count:", freshEvents.length, "IDs:", freshEvents.map(e => e.id));
             targetEv = freshEvents.find(e => e.id === targetEventId);
+            console.log("[EventLookup] Fresh search result:", targetEv ? `FOUND - "${targetEv.title}"` : "NOT FOUND");
             if (targetEv) {
               events = freshEvents;
               EventManagerModule.populateEventDropdowns(events);
             }
           } catch (err) {
-            console.error("Error fetching fresh events list:", err);
+            console.error("[EventLookup] Error fetching fresh events list:", err);
           }
         }
 
@@ -136,6 +143,7 @@ const App = {
             hiddenInput.value = targetEventId;
             select.parentNode.appendChild(hiddenInput);
           }
+          console.log("[EventLookup] SUCCESS: Event auto-selected in dropdown:", targetEv.title);
         } else {
           // If the event ID was in the URL but not found in the database, display a helpful option in the dropdown and notify the user
           select.innerHTML = `<option value="">⚠️ Event Not Found (ID: ${targetEventId})</option>`;
@@ -144,6 +152,7 @@ const App = {
           select.classList.add("bg-glass-disabled");
           
           this.showToast("Event Not Found", `The shared event (ID: ${targetEventId}) does not exist, was deleted, or the database connection failed. Please contact the administrator.`, "danger");
+          console.error("[EventLookup] FAILURE: Event not found. ID:", targetEventId, "| Backend URL configured:", !!ApiService.getApiUrl());
         }
       }
     }

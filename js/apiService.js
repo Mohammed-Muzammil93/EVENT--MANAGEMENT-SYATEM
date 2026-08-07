@@ -47,19 +47,36 @@ const ApiService = {
    */
   async getEvents() {
     const apiUrl = this.getApiUrl();
+    console.log("[EventSync] getEvents() called. API URL:", apiUrl || "(not configured)");
     if (apiUrl) {
       try {
-        const response = await fetch(`${apiUrl}?action=getEvents`);
-        const json = await response.json();
-        if (Array.isArray(json)) {
-          this.saveLocal(STORAGE_KEYS.EVENTS, json);
-          return json;
+        const fetchUrl = `${apiUrl}?action=getEvents`;
+        console.log("[EventSync] Fetching events from:", fetchUrl);
+        const response = await fetch(fetchUrl);
+        console.log("[EventSync] API response status:", response.status, response.statusText);
+        const text = await response.text();
+        console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
+        try {
+          const json = JSON.parse(text);
+          if (Array.isArray(json)) {
+            console.log("[EventSync] Successfully fetched", json.length, "events from API. IDs:", json.map(e => e.id));
+            this.saveLocal(STORAGE_KEYS.EVENTS, json);
+            return json;
+          } else {
+            console.warn("[EventSync] API returned non-array response:", json);
+          }
+        } catch (parseErr) {
+          console.error("[EventSync] Failed to parse API response as JSON:", parseErr);
         }
       } catch (err) {
-        console.warn("Cloud API fetch failed, loading local cache:", err);
+        console.error("[EventSync] Cloud API fetch FAILED:", err.message || err);
       }
+    } else {
+      console.warn("[EventSync] No API URL configured. Using localStorage fallback.");
     }
-    return this.getLocal(STORAGE_KEYS.EVENTS, this.getDefaultEvents());
+    const localEvents = this.getLocal(STORAGE_KEYS.EVENTS, this.getDefaultEvents());
+    console.log("[EventSync] Returning localStorage events. Count:", localEvents.length, "IDs:", localEvents.map(e => e.id));
+    return localEvents;
   },
 
   /**
@@ -112,12 +129,13 @@ const ApiService = {
     // Try cloud sync if API URL exists
     const apiUrl = this.getApiUrl();
     if (apiUrl) {
+      console.log("[EventSync] Syncing registration to cloud for:", newRecord.hallTicket);
       fetch(apiUrl, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({ action: "registerStudent", data: newRecord })
-      }).catch(err => console.log("Cloud sync error:", err));
+      }).then(r => console.log("[EventSync] Registration sync response status:", r.status))
+        .catch(err => console.error("[EventSync] Registration sync FAILED:", err));
     }
 
     return {
@@ -169,12 +187,13 @@ const ApiService = {
     // Cloud sync
     const apiUrl = this.getApiUrl();
     if (apiUrl) {
+      console.log("[EventSync] Syncing attendance to cloud for:", record.hallTicket);
       fetch(apiUrl, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({ action: "markAttendance", data: record })
-      }).catch(err => console.log("Cloud sync error:", err));
+      }).then(r => console.log("[EventSync] Attendance sync response status:", r.status))
+        .catch(err => console.error("[EventSync] Attendance sync FAILED:", err));
     }
 
     return {
@@ -186,39 +205,63 @@ const ApiService = {
 
   async syncCreateEvent(eventData) {
     const apiUrl = this.getApiUrl();
+    console.log("[EventSync] syncCreateEvent called. API URL:", apiUrl || "(not configured)", "Event ID:", eventData.id);
     if (apiUrl) {
-      return fetch(apiUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "createEvent", data: eventData })
-      }).catch(err => console.log("Cloud sync error:", err));
+      try {
+        const resp = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "createEvent", data: eventData })
+        });
+        console.log("[EventSync] syncCreateEvent response status:", resp.status);
+        try {
+          const result = await resp.text();
+          console.log("[EventSync] syncCreateEvent response body:", result.substring(0, 300));
+        } catch (_) {}
+        return resp;
+      } catch (err) {
+        console.error("[EventSync] syncCreateEvent FAILED:", err.message || err);
+      }
+    } else {
+      console.warn("[EventSync] syncCreateEvent skipped: no API URL configured.");
     }
     return Promise.resolve();
   },
 
   async syncUpdateEvent(eventData) {
     const apiUrl = this.getApiUrl();
+    console.log("[EventSync] syncUpdateEvent called. API URL:", apiUrl || "(not configured)", "Event ID:", eventData.id);
     if (apiUrl) {
-      return fetch(apiUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "updateEvent", data: eventData })
-      }).catch(err => console.log("Cloud sync error:", err));
+      try {
+        const resp = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "updateEvent", data: eventData })
+        });
+        console.log("[EventSync] syncUpdateEvent response status:", resp.status);
+        return resp;
+      } catch (err) {
+        console.error("[EventSync] syncUpdateEvent FAILED:", err.message || err);
+      }
     }
     return Promise.resolve();
   },
 
   async syncDeleteEvent(eventId) {
     const apiUrl = this.getApiUrl();
+    console.log("[EventSync] syncDeleteEvent called. API URL:", apiUrl || "(not configured)", "Event ID:", eventId);
     if (apiUrl) {
-      return fetch(apiUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "deleteEvent", eventId: eventId })
-      }).catch(err => console.log("Cloud sync error:", err));
+      try {
+        const resp = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain" },
+          body: JSON.stringify({ action: "deleteEvent", eventId: eventId })
+        });
+        console.log("[EventSync] syncDeleteEvent response status:", resp.status);
+        return resp;
+      } catch (err) {
+        console.error("[EventSync] syncDeleteEvent FAILED:", err.message || err);
+      }
     }
     return Promise.resolve();
   },
