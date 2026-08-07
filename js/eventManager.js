@@ -222,6 +222,7 @@ const EventManagerModule = {
 
   populateEventDropdowns(events) {
     const dropdowns = [
+      document.getElementById("reg-event-select"),
       document.getElementById("scanner-event-filter"),
       document.getElementById("attendance-event-filter"),
       document.getElementById("reports-event-filter"),
