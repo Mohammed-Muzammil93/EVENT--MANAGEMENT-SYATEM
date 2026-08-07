@@ -49,6 +49,18 @@ const App = {
     this.bindEvents();
     this.seedInitialData();
 
+    // Parse backend URL from query parameter if present (to auto-configure guest/student devices)
+    const params = new URLSearchParams(window.location.search);
+    const backendUrl = params.get("backend") || params.get("backendUrl");
+    if (backendUrl) {
+      const currentSettings = ApiService.getSettings();
+      if (currentSettings.webAppUrl !== backendUrl) {
+        currentSettings.webAppUrl = backendUrl;
+        ApiService.saveSettings(currentSettings);
+        console.log("Auto-configured backend Web App URL from link parameter:", backendUrl);
+      }
+    }
+
     // Clean up old demo events from local storage cache
     const localEvents = ApiService.getLocal(STORAGE_KEYS.EVENTS, []);
     const demoIds = ["EVT-TECHFEST-2026", "EVT-HACKATHON-26", "EVT-CULTURAL-26"];
@@ -125,7 +137,13 @@ const App = {
             select.parentNode.appendChild(hiddenInput);
           }
         } else {
-          this.showToast("Event Not Found", "The event link you opened might be invalid or deleted.", "danger");
+          // If the event ID was in the URL but not found in the database, display a helpful option in the dropdown and notify the user
+          select.innerHTML = `<option value="">⚠️ Event Not Found (ID: ${targetEventId})</option>`;
+          select.value = "";
+          select.disabled = true;
+          select.classList.add("bg-glass-disabled");
+          
+          this.showToast("Event Not Found", `The shared event (ID: ${targetEventId}) does not exist, was deleted, or the database connection failed. Please contact the administrator.`, "danger");
         }
       }
     }

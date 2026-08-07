@@ -114,10 +114,17 @@ const EventManagerModule = {
     try {
       const url = new URL(base, window.location.href);
       url.searchParams.set("event", eventId);
+      if (settings.webAppUrl) {
+        url.searchParams.set("backend", settings.webAppUrl);
+      }
       return url.href;
     } catch (e) {
       const sep = base.includes("?") ? "&" : "?";
-      return `${base}${sep}event=${encodeURIComponent(eventId)}`;
+      let res = `${base}${sep}event=${encodeURIComponent(eventId)}`;
+      if (settings.webAppUrl) {
+        res += `&backend=${encodeURIComponent(settings.webAppUrl)}`;
+      }
+      return res;
     }
   },
 
@@ -253,6 +260,8 @@ const EventManagerModule = {
 
     const events = ApiService.getLocal(STORAGE_KEYS.EVENTS, ApiService.getDefaultEvents());
 
+    App.showLoader(true);
+
     if (id) {
       // Edit existing
       const ev = events.find(x => x.id === id);
@@ -264,10 +273,12 @@ const EventManagerModule = {
         ev.category = category;
         ev.maxSeats = maxSeats;
         
-        // Sync to cloud
-        ApiService.syncUpdateEvent(ev);
+        // Sync to cloud and await it
+        await ApiService.syncUpdateEvent(ev);
       }
-      App.showToast("Success", "Event updated successfully!", "success");
+      ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
+      App.showLoader(false);
+      App.showToast("Success", "Event updated and synced successfully!", "success");
     } else {
       const newEv = {
         id: "EVT-" + Date.now().toString(36).toUpperCase(),
@@ -280,18 +291,19 @@ const EventManagerModule = {
         maxSeats,
         createdAt: new Date().toISOString()
       };
+      
+      // Sync to cloud and await it
+      await ApiService.syncCreateEvent(newEv);
+      
       events.push(newEv);
+      ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
       
-      // Sync to cloud
-      ApiService.syncCreateEvent(newEv);
+      App.showLoader(false);
+      App.showToast("Event Created!", "Event created and synced successfully! Opening share & poster options...", "success");
       
-      App.showToast("Event Created!", "Event created successfully! Opening share & poster options...", "success");
-      setTimeout(() => {
-        this.showEventQrModal(newEv.id);
-      }, 500);
+      // Open the share QR modal immediately
+      this.showEventQrModal(newEv.id);
     }
-
-    ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
 
     // Hide Modal & Refresh
     const modalEl = document.getElementById("create-event-modal");

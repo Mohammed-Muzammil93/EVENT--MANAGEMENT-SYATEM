@@ -187,37 +187,40 @@ const ApiService = {
   async syncCreateEvent(eventData) {
     const apiUrl = this.getApiUrl();
     if (apiUrl) {
-      fetch(apiUrl, {
+      return fetch(apiUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "createEvent", data: eventData })
       }).catch(err => console.log("Cloud sync error:", err));
     }
+    return Promise.resolve();
   },
 
   async syncUpdateEvent(eventData) {
     const apiUrl = this.getApiUrl();
     if (apiUrl) {
-      fetch(apiUrl, {
+      return fetch(apiUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateEvent", data: eventData })
       }).catch(err => console.log("Cloud sync error:", err));
     }
+    return Promise.resolve();
   },
 
   async syncDeleteEvent(eventId) {
     const apiUrl = this.getApiUrl();
     if (apiUrl) {
-      fetch(apiUrl, {
+      return fetch(apiUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "deleteEvent", eventId: eventId })
       }).catch(err => console.log("Cloud sync error:", err));
     }
+    return Promise.resolve();
   },
 
   /**
