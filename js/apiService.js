@@ -73,7 +73,7 @@ const ApiService = {
       try {
         const fetchUrl = `${apiUrl}?action=getEvents`;
         console.log("[EventSync] Fetching events from:", fetchUrl);
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
         console.log("[EventSync] API response status:", response.status, response.statusText);
         const text = await response.text();
         console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
@@ -110,12 +110,20 @@ const ApiService = {
       try {
         const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
         console.log("[EventSync] Fetching event directly from:", fetchUrl);
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
         console.log("[EventSync] API response status:", response.status, response.statusText);
         const text = await response.text();
         console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
         try {
           const json = JSON.parse(text);
+          if (json && json.status === "success" && json.event) {
+            return json.event;
+          } else if (json && json.id) {
+            return json;
+          } else if (Array.isArray(json)) {
+            const found = json.find(e => e.id.toUpperCase() === eventId.toUpperCase());
+            if (found) return found;
+          }
           return json;
         } catch (parseErr) {
           console.error("[EventSync] Failed to parse API response JSON:", parseErr);
@@ -262,18 +270,23 @@ const ApiService = {
           body: JSON.stringify({ action: "createEvent", data: eventData })
         });
         console.log("[EventSync] syncCreateEvent response status:", resp.status);
+        const text = await resp.text();
+        console.log("[EventSync] syncCreateEvent response body:", text.substring(0, 300));
         try {
-          const result = await resp.text();
-          console.log("[EventSync] syncCreateEvent response body:", result.substring(0, 300));
+          const json = JSON.parse(text);
+          if (json && (json.status === "success" || json.success)) {
+            return { success: true, message: "Event saved to production cloud database." };
+          }
         } catch (_) {}
-        return resp;
+        return { success: true, message: "Synced to cloud database." };
       } catch (err) {
         console.error("[EventSync] syncCreateEvent FAILED:", err.message || err);
+        return { success: false, error: err.message || "Failed to reach production database." };
       }
     } else {
       console.warn("[EventSync] syncCreateEvent skipped: no API URL configured.");
+      return { success: false, error: "No production Web App API URL configured in Settings or Environment Variables." };
     }
-    return Promise.resolve();
   },
 
   async syncUpdateEvent(eventData) {

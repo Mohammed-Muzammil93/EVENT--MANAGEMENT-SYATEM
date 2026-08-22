@@ -73,7 +73,7 @@ const ApiService = {
       try {
         const fetchUrl = `${apiUrl}?action=getEvents`;
         console.log("[EventSync] Fetching events from:", fetchUrl);
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
         console.log("[EventSync] API response status:", response.status, response.statusText);
         const text = await response.text();
         console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
@@ -110,7 +110,7 @@ const ApiService = {
       try {
         const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
         console.log("[EventSync] Fetching event directly from:", fetchUrl);
-        const response = await fetch(fetchUrl);
+        const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
         console.log("[EventSync] API response status:", response.status, response.statusText);
         const text = await response.text();
         console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));

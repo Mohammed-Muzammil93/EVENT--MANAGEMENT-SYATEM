@@ -111,18 +111,20 @@ const EventManagerModule = {
       base = "https://" + base;
     }
 
+    const apiUrl = ApiService.getApiUrl();
+
     try {
       const url = new URL(base, window.location.href);
       url.searchParams.set("event", eventId);
-      if (settings.webAppUrl) {
-        url.searchParams.set("backend", settings.webAppUrl);
+      if (apiUrl) {
+        url.searchParams.set("backend", apiUrl);
       }
       return url.href;
     } catch (e) {
       const sep = base.includes("?") ? "&" : "?";
       let res = `${base}${sep}event=${encodeURIComponent(eventId)}`;
-      if (settings.webAppUrl) {
-        res += `&backend=${encodeURIComponent(settings.webAppUrl)}`;
+      if (apiUrl) {
+        res += `&backend=${encodeURIComponent(apiUrl)}`;
       }
       return res;
     }
@@ -259,7 +261,9 @@ const EventManagerModule = {
     }
 
     if (!ApiService.getApiUrl()) {
-      App.showToast("Settings Required", "⚠️ Web App API URL is not set in Settings! Please configure it in Settings so events sync to cloud and shared links work for guests.", "warning");
+      App.showToast("Cloud Database URL Missing!", "❌ Production API URL is not configured in Settings! Please configure your Google Apps Script Web App URL in Settings before creating events.", "danger");
+      alert("❌ Cannot Create Event: Web App API URL is not configured!\n\nPlease go to Settings and paste your Google Apps Script Web App URL so that events are saved to the production cloud database.");
+      return;
     }
 
     const events = ApiService.getLocal(STORAGE_KEYS.EVENTS, ApiService.getDefaultEvents());
@@ -297,13 +301,19 @@ const EventManagerModule = {
       };
       
       // Sync to cloud and await it
-      await ApiService.syncCreateEvent(newEv);
+      const syncRes = await ApiService.syncCreateEvent(newEv);
+      if (syncRes && syncRes.success === false) {
+        App.showLoader(false);
+        App.showToast("Database Error", `❌ Failed to save event to cloud database: ${syncRes.error}`, "danger");
+        alert(`❌ Database Error: Could not save event to the production database.\n\nError: ${syncRes.error}\n\nPlease check your Google Apps Script Web App URL and permissions in Settings.`);
+        return;
+      }
       
       events.push(newEv);
       ApiService.saveLocal(STORAGE_KEYS.EVENTS, events);
       
       App.showLoader(false);
-      App.showToast("Event Created!", "Event created and synced successfully! Opening share & poster options...", "success");
+      App.showToast("Event Created!", "Event saved to production cloud database! Opening share & poster options...", "success");
       
       // Open the share QR modal immediately
       this.showEventQrModal(newEv.id);

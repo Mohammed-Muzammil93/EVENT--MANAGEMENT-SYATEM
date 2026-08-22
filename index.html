@@ -144,11 +144,35 @@
               <p class="text-secondary text-sm">Fill out the details below to generate your instant Event Entry Pass ID Card with encrypted QR Code.</p>
             </div>
 
+            <!-- Direct Event Info Card (Shown when QR code / shared link is scanned) -->
+            <div id="direct-event-banner" class="d-none mb-4 p-4 rounded-3 border" style="background: rgba(79, 70, 229, 0.15); border-color: rgba(99, 102, 241, 0.4) !important; backdrop-filter: blur(10px);">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="badge bg-primary text-uppercase px-3 py-1" id="direct-event-category">Event</span>
+                <span class="badge bg-success px-3 py-1" id="direct-event-status">Open</span>
+              </div>
+              <h3 class="font-weight-bold text-white mb-2" id="direct-event-title">Event Title</h3>
+              <div class="text-sm text-secondary">
+                <div class="mb-1"><i class="bi bi-calendar-event me-2 text-primary"></i><span id="direct-event-date">Date & Time</span></div>
+                <div><i class="bi bi-geo-alt me-2 text-primary"></i><span id="direct-event-venue">Venue</span></div>
+              </div>
+            </div>
+
+            <!-- Direct Event Error Banner (Shown if shared event ID does not exist in DB) -->
+            <div id="direct-event-error" class="d-none mb-4 p-4 rounded-3 border bg-danger-subtle border-danger text-danger">
+              <div class="d-flex align-items-center gap-3">
+                <i class="bi bi-exclamation-triangle-fill fs-2"></i>
+                <div>
+                  <h5 class="font-weight-bold mb-1">Event No Longer Available</h5>
+                  <p id="direct-event-error-msg" class="mb-0 text-sm">The shared event does not exist in the database or was deleted by the organizer.</p>
+                </div>
+              </div>
+            </div>
+
             <form id="student-reg-form" onsubmit="RegistrationModule.handleFormSubmit(event)">
               <div class="row g-3">
 
                 <!-- Event Selection -->
-                <div class="col-12">
+                <div class="col-12" id="reg-event-select-container">
                   <label for="reg-event-select" class="form-label">Select Target Event <span class="text-danger">*</span></label>
                   <select id="reg-event-select" class="form-select" required>
                     <option value="">Loading events...</option>

@@ -65,10 +65,10 @@ function doGet(e) {
         const matchedEvents = getEventsData(eventId);
         console.log("[Server-GET] getEvent query result count: " + (matchedEvents ? matchedEvents.length : 0));
         if (matchedEvents && matchedEvents.length > 0) {
-          data = { status: "success", event: matchedEvents[0] };
+          data = { status: "success", success: true, event: matchedEvents[0] };
         } else {
           console.warn("[Server-GET] Event not found for ID: " + eventId);
-          data = { status: "error", code: "EVENT_NOT_FOUND", message: "Event not found in production database." };
+          data = { status: "error", success: false, code: "EVENT_NOT_FOUND", message: "Event not found in production database." };
         }
         break;
       case "getRegistrations":
@@ -390,21 +390,35 @@ function getEventsData(eventId) {
   if (rows.length <= 1) return [];
 
   const result = [];
-  const searchId = eventId ? eventId.trim().toUpperCase() : "";
+  const searchId = eventId ? eventId.toString().trim().toUpperCase() : "";
   console.log("[Server-Query] Querying events database. Filter ID: " + (searchId || "NONE"));
   for (let i = 1; i < rows.length; i++) {
     const rowId = rows[i][0] ? rows[i][0].toString().trim().toUpperCase() : "";
     if (!searchId || rowId === searchId) {
+      let dateVal = rows[i][2];
+      if (dateVal instanceof Date) {
+        dateVal = Utilities.formatDate(dateVal, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      } else if (dateVal) {
+        dateVal = dateVal.toString();
+      }
+
+      let timeVal = rows[i][3];
+      if (timeVal instanceof Date) {
+        timeVal = Utilities.formatDate(timeVal, Session.getScriptTimeZone(), "HH:mm");
+      } else if (timeVal) {
+        timeVal = timeVal.toString();
+      }
+
       result.push({
-        id: rows[i][0],
-        title: rows[i][1],
-        date: rows[i][2],
-        time: rows[i][3],
-        venue: rows[i][4],
-        category: rows[i][5],
-        status: rows[i][6],
-        maxSeats: rows[i][7],
-        createdAt: rows[i][8]
+        id: rows[i][0] ? rows[i][0].toString().trim() : "",
+        title: rows[i][1] ? rows[i][1].toString() : "",
+        date: dateVal || "",
+        time: timeVal || "",
+        venue: rows[i][4] ? rows[i][4].toString() : "",
+        category: rows[i][5] ? rows[i][5].toString() : "",
+        status: rows[i][6] ? rows[i][6].toString() : "",
+        maxSeats: rows[i][7] || 500,
+        createdAt: rows[i][8] ? rows[i][8].toString() : ""
       });
     }
   }

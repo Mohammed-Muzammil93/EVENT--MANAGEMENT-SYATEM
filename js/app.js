@@ -104,15 +104,14 @@ const App = {
     const targetEventId = (eventParamVal || eventIdParamVal || "").trim();
     const backendUrl = (params.get("backend") || params.get("backendUrl") || "").trim();
 
-    const currentApiUrl = ApiService.getApiUrl();
+    const bannerEl = document.getElementById("direct-event-banner");
+    const errorEl = document.getElementById("direct-event-error");
+    const selectContainer = document.getElementById("reg-event-select-container") || document.getElementById("reg-event-select")?.parentNode;
+    const select = document.getElementById("reg-event-select");
 
-    console.log("[EventLookup Trace] ==========================================");
-    console.log("[EventLookup Trace] window.location.search:", searchString);
-    console.log("[EventLookup Trace] Raw 'event' parameter:", eventParamVal);
-    console.log("[EventLookup Trace] Raw 'eventId' parameter:", eventIdParamVal);
-    console.log("[EventLookup Trace] Parsed Target Event ID:", targetEventId || "(NONE)");
-    console.log("[EventLookup Trace] Extracted Backend URL param:", backendUrl || "(NONE)");
-    console.log("[EventLookup Trace] Active API URL before config:", currentApiUrl || "(UNCONFIGURED)");
+    // Hide banners initially
+    if (bannerEl) bannerEl.classList.add("d-none");
+    if (errorEl) errorEl.classList.add("d-none");
 
     // Auto-configure API URL if passed in link parameter
     if (backendUrl) {
@@ -124,10 +123,9 @@ const App = {
       }
     }
 
-    const select = document.getElementById("reg-event-select");
     if (!select) return;
 
-    // Requirement 5: If no event parameter exists, show Select Target Event dropdown with all events
+    // No event parameter in URL: show default dropdown selection
     if (!targetEventId) {
       console.log("[EventLookup Trace] No event parameter in URL. Fallback to full dropdown selection.");
       let allEvents = eventsList || [];
@@ -137,65 +135,78 @@ const App = {
         } catch (_) {}
       }
       EventManagerModule.populateEventDropdowns(allEvents);
+      if (selectContainer) selectContainer.classList.remove("d-none");
       select.disabled = false;
       select.classList.remove("bg-glass-disabled");
       return;
     }
 
-    // Target event ID exists in URL: proceed with lookup
-    console.log("[EventLookup Trace] Attempting lookup for Event ID:", targetEventId);
-    let events = eventsList || [];
-    let targetEv = events.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
+    // Target event ID exists in URL: proceed with database lookup
+    console.log("[EventLookup Trace] Direct URL parameter detected. Looking up Event ID:", targetEventId);
 
-    // 1. Try direct single-event query from backend database if API URL exists
-    const apiUrl = ApiService.getApiUrl();
-    console.log("[EventLookup Trace] API URL to call:", apiUrl || "(NONE)");
-
-    if (apiUrl) {
-      try {
-        const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(targetEventId)}`;
-        console.log("[EventLookup Trace] Fetching API URL:", fetchUrl);
-        const resp = await fetch(fetchUrl);
-        console.log("[EventLookup Trace] HTTP Status Code:", resp.status, resp.statusText);
-        const text = await resp.text();
-        console.log("[EventLookup Trace] Raw API Response Body:", text);
-        try {
-          const json = JSON.parse(text);
-          if (json && json.status === "success" && json.event) {
-            targetEv = json.event;
-            console.log("[EventLookup Trace] SUCCESS: API returned event:", targetEv.title);
-          } else if (json && Array.isArray(json)) {
-            const found = json.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
-            if (found) targetEv = found;
-          }
-        } catch (jsonErr) {
-          console.error("[EventLookup Trace] Response body is not valid JSON:", jsonErr);
-        }
-      } catch (fetchErr) {
-        console.error("[EventLookup Trace] Direct API fetch failed:", fetchErr);
-      }
-    } else {
-      console.warn("[EventLookup Trace] API URL is not configured.");
+    // Show loading state in banner if available
+    if (bannerEl) {
+      bannerEl.classList.remove("d-none");
+      const titleEl = document.getElementById("direct-event-title");
+      const dateEl = document.getElementById("direct-event-date");
+      const venueEl = document.getElementById("direct-event-venue");
+      if (titleEl) titleEl.innerText = "Loading Event Details...";
+      if (dateEl) dateEl.innerText = "Connecting to database...";
+      if (venueEl) venueEl.innerText = "Please wait...";
     }
 
-    // 2. Fallback: If not found via direct getEvent, try full getEvents list
-    if (!targetEv && apiUrl) {
-      console.log("[EventLookup Trace] Fallback: fetching full events list from backend...");
+    let targetEv = null;
+
+    // 1. Try local list check first
+    let events = eventsList || [];
+    targetEv = events.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
+
+    // 2. Query production database directly via ApiService.getEventById
+    if (!targetEv) {
+      try {
+        const result = await ApiService.getEventById(targetEventId);
+        if (result && result.id) {
+          targetEv = result;
+        }
+      } catch (err) {
+        console.error("[EventLookup Trace] Direct getEventById API call failed:", err);
+      }
+    }
+
+    // 3. Fallback: try fetching full events list from backend
+    if (!targetEv) {
       try {
         const freshEvents = await ApiService.getEvents();
         targetEv = freshEvents.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
-        if (targetEv) {
-          events = freshEvents;
-          EventManagerModule.populateEventDropdowns(events);
-        }
       } catch (err) {
-        console.error("[EventLookup Trace] Full events list fetch failed:", err);
+        console.error("[EventLookup Trace] getEvents API fallback failed:", err);
       }
     }
 
-    // 3. Render Result
+    // RESULT 1: SUCCESS - Event found in database!
     if (targetEv) {
-      // Ensure targetEv is present in select dropdown
+      console.log("[EventLookup Trace] SUCCESS! Event loaded automatically:", targetEv.title);
+
+      // Populate & Display Direct Event Banner
+      if (bannerEl) {
+        bannerEl.classList.remove("d-none");
+        const catEl = document.getElementById("direct-event-category");
+        const statusEl = document.getElementById("direct-event-status");
+        const titleEl = document.getElementById("direct-event-title");
+        const dateEl = document.getElementById("direct-event-date");
+        const venueEl = document.getElementById("direct-event-venue");
+
+        if (catEl) catEl.innerText = targetEv.category || "Event";
+        if (statusEl) statusEl.innerText = targetEv.status || "Open";
+        if (titleEl) titleEl.innerText = targetEv.title;
+        if (dateEl) dateEl.innerText = `${targetEv.date} at ${targetEv.time || 'TBD'}`;
+        if (venueEl) venueEl.innerText = targetEv.venue;
+      }
+
+      // Hide manual dropdown selection & auto-assign hidden form input
+      if (selectContainer) selectContainer.classList.add("d-none");
+
+      // Ensure select option exists & is selected
       let existsInDropdown = Array.from(select.options).some(opt => opt.value === targetEv.id);
       if (!existsInDropdown) {
         const opt = document.createElement("option");
@@ -203,34 +214,48 @@ const App = {
         opt.text = `${targetEv.title} (${targetEv.date})`;
         select.appendChild(opt);
       }
-
       select.value = targetEv.id;
-      select.disabled = true;
-      select.classList.add("bg-glass-disabled");
 
-      this.showToast("Direct Event Link Detected", `Auto-selected: ${targetEv.title}`, "info");
-
-      // Hidden input for form state safety
+      // Hidden input for form submission guarantee
       let hiddenInput = document.getElementById("reg-event-select-hidden");
       if (!hiddenInput) {
         hiddenInput = document.createElement("input");
         hiddenInput.type = "hidden";
         hiddenInput.id = "reg-event-select-hidden";
+        hiddenInput.name = "eventId";
         hiddenInput.value = targetEv.id;
         select.parentNode.appendChild(hiddenInput);
       } else {
         hiddenInput.value = targetEv.id;
       }
-      console.log("[EventLookup Trace] FINAL RESULT: Auto-selected event in dropdown:", targetEv.title);
-    } else {
-      // Event ID was present in URL but API/storage lookups could not find it
-      select.innerHTML = `<option value="">⚠️ Event Not Found (ID: ${targetEventId})</option>`;
-      select.value = "";
-      select.disabled = true;
-      select.classList.add("bg-glass-disabled");
 
-      this.showToast("Event Not Found", `The shared event (ID: ${targetEventId}) does not exist, was deleted, or database connection failed.`, "danger");
-      console.error("[EventLookup Trace] FINAL RESULT: Event not found. ID:", targetEventId);
+      this.showToast("Event Loaded", `Auto-loaded event: ${targetEv.title}`, "info");
+
+    } else {
+      // RESULT 2: ERROR - Event ID genuinely does not exist in DB (e.g. deleted or invalid)
+      console.error("[EventLookup Trace] FAILURE: Event ID not found in database:", targetEventId);
+
+      if (bannerEl) bannerEl.classList.add("d-none");
+
+      if (errorEl) {
+        errorEl.classList.remove("d-none");
+        const msgEl = document.getElementById("direct-event-error-msg");
+        if (msgEl) {
+          msgEl.innerText = `The shared event (ID: ${targetEventId}) was not found in the database. It may have been deleted by the organizer or the link is invalid.`;
+        }
+      }
+
+      // Show manual selection dropdown as fallback so user isn't stuck
+      if (selectContainer) selectContainer.classList.remove("d-none");
+      let allEvents = eventsList || [];
+      if (!allEvents.length) {
+        try { allEvents = await ApiService.getEvents(); } catch (_) {}
+      }
+      EventManagerModule.populateEventDropdowns(allEvents);
+      select.disabled = false;
+      select.classList.remove("bg-glass-disabled");
+
+      this.showToast("Event Not Found", `Event (ID: ${targetEventId}) was not found in database.`, "danger");
     }
   },
 
@@ -516,6 +541,16 @@ const App = {
       if (show) loader.classList.remove("d-none");
       else loader.classList.add("d-none");
     }
+  },
+
+  escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 };
 
