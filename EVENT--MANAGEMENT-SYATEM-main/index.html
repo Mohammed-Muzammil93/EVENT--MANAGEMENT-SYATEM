@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Event Entry Management System | College Portal</title>
+  <meta name="description" content="Production-Ready Smart Event Entry System with Automated QR Ticketing, High-DPI ID Cards, Live Scanner, Google Sheets Backend, and Excel Reports.">
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap 5 CSS & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="css/styles.css">
+
+  <!-- QRCode.js library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- html5-qrcode library for camera scanner -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <!-- Chart.js for analytics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- SheetJS (xlsx) for Excel export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- Global Loading Indicator Overlay -->
+  <div id="global-loader" class="position-fixed top-0 start-0 w-100 h-100 d-flex justify-content-center align-items-center d-none" style="background: rgba(15, 23, 42, 0.75); z-index: 9999; backdrop-filter: blur(8px);">
+    <div class="text-center">
+      <div class="spinner-border text-primary mb-3" style="width: 3rem; height: 3rem;" role="status"></div>
+      <h5 class="text-white font-weight-bold">Processing Request...</h5>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container position-fixed bottom-0 end-0 p-3"></div>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark glass-nav py-3">
+    <div class="container-fluid px-4">
+      <a class="navbar-brand" href="#" data-nav-target="student-portal">
+        <div class="brand-icon">
+          <i class="bi bi-qr-code-scan"></i>
+        </div>
+        <span>Smart<span class="text-gradient">Event</span></span>
+      </a>
+
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="navbarContent">
+        <ul class="nav nav-pills mx-auto my-2 my-lg-0 gap-1">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" data-nav-target="student-portal">
+              <i class="bi bi-person-badge me-1"></i>Registration
+            </a>
+          </li>
+          <li class="nav-item admin-only-nav">
+            <a class="nav-link" href="#" data-nav-target="admin-dashboard">
+              <i class="bi bi-speedometer2 me-1"></i>Dashboard
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-nav-target="scanner-view">
+              <i class="bi bi-qr-code-scan me-1"></i>QR Scanner
+            </a>
+          </li>
+          <li class="nav-item admin-only-nav">
+            <a class="nav-link" href="#" data-nav-target="events-view">
+              <i class="bi bi-calendar-event me-1"></i>Events
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-nav-target="attendance-view">
+              <i class="bi bi-card-checklist me-1"></i>Attendance
+            </a>
+          </li>
+          <li class="nav-item admin-only-nav">
+            <a class="nav-link" href="#" data-nav-target="analytics-view">
+              <i class="bi bi-graph-up me-1"></i>Analytics
+            </a>
+          </li>
+          <li class="nav-item admin-only-nav">
+            <a class="nav-link" href="#" data-nav-target="volunteers-view">
+              <i class="bi bi-people me-1"></i>Volunteers
+            </a>
+          </li>
+          <li class="nav-item admin-only-nav">
+            <a class="nav-link" href="#" data-nav-target="settings-view">
+              <i class="bi bi-gear me-1"></i>Settings
+            </a>
+          </li>
+        </ul>
+
+        <div class="d-flex align-items-center gap-3">
+          <!-- Dark/Light Theme Toggle -->
+          <button id="theme-toggle-btn" class="btn btn-custom-outline py-2 px-3" title="Toggle Light/Dark Theme">
+            <i id="theme-toggle-icon" class="bi bi-sun-fill"></i>
+          </button>
+
+          <!-- Login Button / Profile Badge -->
+          <div id="nav-login-item">
+            <button class="btn btn-custom-primary" data-bs-toggle="modal" data-bs-target="#login-modal">
+              <i class="bi bi-box-arrow-in-right me-1"></i>Admin / Volunteer Login
+            </button>
+          </div>
+
+          <div id="nav-user-profile" class="d-none d-flex align-items-center gap-2">
+            <div class="text-end d-none d-sm-block">
+              <div id="user-profile-name" class="font-weight-bold text-sm">Administrator</div>
+              <span id="user-profile-role" class="badge bg-danger">ADMIN</span>
+            </div>
+            <button id="btn-logout" class="btn btn-sm btn-outline-danger" title="Logout">
+              <i class="bi bi-power"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- MAIN VIEW CONTAINER -->
+  <main class="container-fluid px-4 py-4">
+
+    <!-- ===================================================================
+         VIEW 1: STUDENT REGISTRATION PORTAL
+         =================================================================== -->
+    <section id="student-portal" class="view-section animate-fade-in">
+      <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-7">
+          <div class="glass-card p-4 p-md-5">
+            <div class="text-center mb-4">
+              <span class="badge bg-accent-gradient badge-custom mb-2">COLLEGE EVENT PORTAL</span>
+              <h2 class="font-weight-bold">Student Event Registration</h2>
+              <p class="text-secondary text-sm">Fill out the details below to generate your instant Event Entry Pass ID Card with encrypted QR Code.</p>
+            </div>
+
+            <!-- Direct Event Info Card (Shown when QR code / shared link is scanned) -->
+            <div id="direct-event-banner" class="d-none mb-4 p-4 rounded-3 border" style="background: rgba(79, 70, 229, 0.15); border-color: rgba(99, 102, 241, 0.4) !important; backdrop-filter: blur(10px);">
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <span class="badge bg-primary text-uppercase px-3 py-1" id="direct-event-category">Event</span>
+                <span class="badge bg-success px-3 py-1" id="direct-event-status">Open</span>
+              </div>
+              <h3 class="font-weight-bold text-white mb-2" id="direct-event-title">Event Title</h3>
+              <div class="text-sm text-secondary">
+                <div class="mb-1"><i class="bi bi-calendar-event me-2 text-primary"></i><span id="direct-event-date">Date & Time</span></div>
+                <div><i class="bi bi-geo-alt me-2 text-primary"></i><span id="direct-event-venue">Venue</span></div>
+              </div>
+            </div>
+
+            <!-- Direct Event Error Banner (Shown if shared event ID does not exist in DB) -->
+            <div id="direct-event-error" class="d-none mb-4 p-4 rounded-3 border bg-danger-subtle border-danger text-danger">
+              <div class="d-flex align-items-center gap-3">
+                <i class="bi bi-exclamation-triangle-fill fs-2"></i>
+                <div>
+                  <h5 class="font-weight-bold mb-1">Event No Longer Available</h5>
+                  <p id="direct-event-error-msg" class="mb-0 text-sm">The shared event does not exist in the database or was deleted by the organizer.</p>
+                </div>
+              </div>
+            </div>
+
+            <form id="student-reg-form" onsubmit="RegistrationModule.handleFormSubmit(event)">
+              <div class="row g-3">
+
+                <!-- Event Selection -->
+                <div class="col-12" id="reg-event-select-container">
+                  <label for="reg-event-select" class="form-label">Select Target Event <span class="text-danger">*</span></label>
+                  <select id="reg-event-select" class="form-select" required>
+                    <option value="">Loading events...</option>
+                  </select>
+                </div>
+
+                <!-- Full Name -->
+                <div class="col-md-6">
+                  <label for="reg-fullname" class="form-label">Full Name <span class="text-danger">*</span></label>
+                  <input type="text" id="reg-fullname" class="form-control" placeholder="e.g. Mohammed Muzammil" required>
+                </div>
+
+                <!-- Hall Ticket Number -->
+                <div class="col-md-6">
+                  <label for="reg-htno" class="form-label">Hall Ticket Number <span class="text-danger">*</span></label>
+                  <input type="text" id="reg-htno" class="form-control text-uppercase" placeholder="e.g. 21011A0501" required>
+                </div>
+
+                <!-- Branch -->
+                <div class="col-md-4">
+                  <label for="reg-branch" class="form-label">Branch <span class="text-danger">*</span></label>
+                  <select id="reg-branch" class="form-select" required>
+                    <option value="">Select Branch</option>
+                    <option value="CSE">CSE</option>
+                    <option value="ECE">ECE</option>
+                    <option value="EEE">EEE</option>
+                    <option value="MECH">MECH</option>
+                    <option value="CIVIL">CIVIL</option>
+                    <option value="IT">IT</option>
+                    <option value="AIML">AI / ML</option>
+                    <option value="DS">Data Science</option>
+                  </select>
+                </div>
+
+                <!-- Year -->
+                <div class="col-md-4">
+                  <label for="reg-year" class="form-label">Year <span class="text-danger">*</span></label>
+                  <select id="reg-year" class="form-select" required>
+                    <option value="">Select Year</option>
+                    <option value="I">I Year</option>
+                    <option value="II">II Year</option>
+                    <option value="III">III Year</option>
+                    <option value="IV">IV Year</option>
+                  </select>
+                </div>
+
+                <!-- Section -->
+                <div class="col-md-4">
+                  <label for="reg-section" class="form-label">Section <span class="text-danger">*</span></label>
+                  <select id="reg-section" class="form-select" required>
+                    <option value="">Select Section</option>
+                    <option value="A">Section A</option>
+                    <option value="B">Section B</option>
+                    <option value="C">Section C</option>
+                    <option value="D">Section D</option>
+                    <option value="E">Section E</option>
+                    <option value="F">Section F</option>
+                    <option value="G">Section G</option>
+                  </select>
+                </div>
+
+                <!-- Mobile Number -->
+                <div class="col-md-6">
+                  <label for="reg-mobile" class="form-label">Mobile Number <span class="text-danger">*</span></label>
+                  <input type="tel" id="reg-mobile" class="form-control" placeholder="10-digit mobile number" required>
+                </div>
+
+                <!-- Email -->
+                <div class="col-md-6">
+                  <label for="reg-email" class="form-label">Email Address <span class="text-danger">*</span></label>
+                  <input type="email" id="reg-email" class="form-control" placeholder="student@college.edu" required>
+                </div>
+
+                <!-- Photo Upload (Optional) -->
+                <div class="col-12">
+                  <label for="reg-photo-input" class="form-label">Student Photo (Optional)</label>
+                  <input type="file" id="reg-photo-input" class="form-control" accept="image/*">
+                  <div class="mt-2">
+                    <img id="reg-photo-preview" src="#" alt="Photo Preview" class="rounded-circle d-none" style="width: 70px; height: 70px; object-fit: cover; border: 2px solid var(--accent-primary);">
+                  </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="col-12 mt-4">
+                  <button type="submit" class="btn btn-custom-primary w-100 py-3 text-lg">
+                    <i class="bi bi-qr-code me-2"></i>Register & Generate ID Card
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 2: ADMIN DASHBOARD
+         =================================================================== -->
+    <section id="admin-dashboard" class="view-section d-none animate-fade-in">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
+        <div>
+          <h2 class="font-weight-bold m-0">Event Control Dashboard</h2>
+          <p class="text-secondary text-sm m-0">Live attendance monitoring, event registration stats & real-time analytics.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <select id="dashboard-event-filter" class="form-select form-select-sm" onchange="DashboardModule.refresh()">
+            <option value="">-- All Events Summary --</option>
+          </select>
+          <button class="btn btn-custom-outline btn-sm" onclick="DashboardModule.refresh()">
+            <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Stat Cards Grid -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-primary">
+              <i class="bi bi-calendar-check"></i>
+            </div>
+            <div>
+              <div id="stat-total-events" class="stat-value">0</div>
+              <div class="stat-label">Total Events</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-info">
+              <i class="bi bi-person-lines-fill"></i>
+            </div>
+            <div>
+              <div id="stat-total-regs" class="stat-value">0</div>
+              <div class="stat-label">Registrations</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-success">
+              <i class="bi bi-person-check-fill"></i>
+            </div>
+            <div>
+              <div id="stat-present" class="stat-value">0</div>
+              <div class="stat-label">Present</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-danger">
+              <i class="bi bi-person-x-fill"></i>
+            </div>
+            <div>
+              <div id="stat-absent" class="stat-value">0</div>
+              <div class="stat-label">Absent</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-warning">
+              <i class="bi bi-pie-chart-fill"></i>
+            </div>
+            <div>
+              <div id="stat-att-pct" class="stat-value">0.0%</div>
+              <div class="stat-label">Turnout %</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6 col-lg-2">
+          <div class="glass-card stat-card">
+            <div class="stat-icon bg-glass text-purple">
+              <i class="bi bi-clock-history"></i>
+            </div>
+            <div>
+              <div id="stat-today-att" class="stat-value">0</div>
+              <div class="stat-label">Today's Scans</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overview Charts Row -->
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="glass-card p-4">
+            <h5 class="font-weight-bold mb-3"><i class="bi bi-bar-chart-fill me-2 text-primary"></i>Branch-Wise Registration Breakdown</h5>
+            <canvas id="chart-branch-wise" height="130"></canvas>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="glass-card p-4">
+            <h5 class="font-weight-bold mb-3"><i class="bi bi-pie-chart-fill me-2 text-secondary"></i>Year-Wise Student Distribution</h5>
+            <canvas id="chart-year-wise" height="200"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 3: QR SCANNER MODULE
+         =================================================================== -->
+    <section id="scanner-view" class="view-section d-none animate-fade-in">
+      <div class="row justify-content-center">
+        <div class="col-lg-8 col-xl-6">
+          <div class="glass-card p-4 text-center mb-4">
+            <h3 class="font-weight-bold mb-2"><i class="bi bi-camera-fill me-2 text-primary"></i>Volunteer QR Entry Scanner</h3>
+            <p class="text-secondary text-sm mb-3">Scan student event pass QR code using device camera or file upload.</p>
+
+            <div class="row justify-content-center g-2 mb-3">
+              <div class="col-md-8">
+                <select id="scanner-event-filter" class="form-select form-select-sm">
+                  <option value="">-- All Events Active --</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Scanner Box -->
+            <div id="qr-reader-container" class="mb-3">
+              <div id="qr-reader"></div>
+              <div id="qr-file-temp-reader" class="d-none"></div>
+            </div>
+
+            <div id="scanner-status-text" class="text-sm text-secondary mb-3">Camera Ready</div>
+
+            <div class="d-flex justify-content-center gap-2 mb-4">
+              <button id="btn-start-scanner" class="btn btn-custom-primary">
+                <i class="bi bi-camera me-1"></i>Start Camera Scan
+              </button>
+              <button id="btn-stop-scanner" class="btn btn-outline-danger d-none">
+                <i class="bi bi-stop-circle me-1"></i>Stop Camera
+              </button>
+              <label class="btn btn-custom-outline">
+                <i class="bi bi-upload me-1"></i>Scan Image
+                <input type="file" id="qr-file-input" class="d-none" accept="image/*">
+              </label>
+            </div>
+
+            <!-- Manual Hall Ticket Input Fallback -->
+            <div class="border-top border-glass pt-3 mt-2">
+              <label class="form-label text-sm text-muted mb-2">Or Enter Hall Ticket / Reg ID Manually:</label>
+              <div class="input-group">
+                <input type="text" id="manual-qr-input" class="form-control text-uppercase" placeholder="Enter Hall Ticket No. (e.g. 21011A0501)">
+                <button id="btn-manual-scan-submit" class="btn btn-custom-primary">Verify Entry</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Scan Result Display Card -->
+          <div id="scan-result-card" class="glass-card p-4 scan-result-card d-none">
+            <!-- Injected dynamically by qrScanner.js -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 4: EVENT MANAGEMENT MODULE
+         =================================================================== -->
+    <section id="events-view" class="view-section d-none animate-fade-in">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2 class="font-weight-bold m-0">Event Management</h2>
+          <p class="text-secondary text-sm m-0">Create, edit, close registration, or archive past college events.</p>
+        </div>
+        <button class="btn btn-custom-primary" data-bs-toggle="modal" data-bs-target="#create-event-modal">
+          <i class="bi bi-plus-lg me-1"></i>Create New Event
+        </button>
+      </div>
+
+      <div id="events-list-grid" class="row g-4">
+        <!-- Rendered dynamically by eventManager.js -->
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 5: ATTENDANCE LOG MODULE
+         =================================================================== -->
+    <section id="attendance-view" class="view-section d-none animate-fade-in">
+      <div class="glass-card p-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+          <div>
+            <h3 class="font-weight-bold m-0">Attendance Records & History</h3>
+            <p class="text-secondary text-sm m-0">Filter, search, and manually manage entry logs.</p>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success" onclick="ReportsModule.exportAttendanceExcel('PRESENT')">
+              <i class="bi bi-file-earmark-excel me-1"></i>Export Present
+            </button>
+            <button class="btn btn-sm btn-outline-primary" onclick="ReportsModule.exportRegistrationsExcel()">
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export All Regs
+            </button>
+          </div>
+        </div>
+
+        <!-- Filters Row -->
+        <div class="row g-3 mb-3">
+          <div class="col-md-4">
+            <input type="text" id="attendance-search-input" class="form-control" placeholder="Search Name, Hall Ticket, Branch..." onkeyup="AttendanceModule.renderTable()">
+          </div>
+          <div class="col-md-4">
+            <select id="attendance-event-filter" class="form-select" onchange="AttendanceModule.renderTable()">
+              <option value="">-- All Events --</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <select id="attendance-status-filter" class="form-select" onchange="AttendanceModule.renderTable()">
+              <option value="">-- All Entry Statuses --</option>
+              <option value="PRESENT">PRESENT</option>
+              <option value="ABSENT">ABSENT</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Attendance Table -->
+        <div class="table-responsive">
+          <table class="table table-glass">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Student Details</th>
+                <th>Hall Ticket</th>
+                <th>Branch & Year</th>
+                <th>Event</th>
+                <th>Status</th>
+                <th>Entry Time</th>
+                <th>Action / Scanned By</th>
+              </tr>
+            </thead>
+            <tbody id="attendance-table-body">
+              <!-- Rendered by attendance.js -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div class="d-flex justify-content-between align-items-center mt-3 text-sm">
+          <span id="attendance-page-info" class="text-secondary">Page 1 of 1</span>
+          <div class="d-flex gap-2">
+            <button id="btn-att-prev" class="btn btn-sm btn-custom-outline" onclick="AttendanceModule.changePage(-1)"><i class="bi bi-chevron-left me-1"></i>Prev</button>
+            <button id="btn-att-next" class="btn btn-sm btn-custom-outline" onclick="AttendanceModule.changePage(1)">Next<i class="bi bi-chevron-right ms-1"></i></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 6: ANALYTICS & REPORTS
+         =================================================================== -->
+    <section id="analytics-view" class="view-section d-none animate-fade-in">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+          <h2 class="font-weight-bold m-0">Advanced Analytics & Export Reports</h2>
+          <p class="text-secondary text-sm m-0">Detailed event metrics and report downloads.</p>
+        </div>
+        <div class="d-flex gap-2">
+          <select id="reports-event-filter" class="form-select form-select-sm" style="width: 220px;">
+            <option value="">-- All Events --</option>
+          </select>
+          <button class="btn btn-sm btn-custom-primary" onclick="ReportsModule.exportRegistrationsExcel()">
+            <i class="bi bi-file-earmark-excel me-1"></i>Download Excel (.xlsx)
+          </button>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-12">
+          <div class="glass-card p-4">
+            <h5 class="font-weight-bold mb-3"><i class="bi bi-graph-up-arrow me-2 text-success"></i>Event Comparison: Registrations vs Attendance Turnout</h5>
+            <canvas id="chart-event-wise" height="100"></canvas>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 7: VOLUNTEER MANAGEMENT MODULE
+         =================================================================== -->
+    <section id="volunteers-view" class="view-section d-none animate-fade-in">
+      <div class="glass-card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+          <div>
+            <h3 class="font-weight-bold m-0">Volunteer Management</h3>
+            <p class="text-secondary text-sm m-0">Create restricted scanner accounts for student volunteers.</p>
+          </div>
+          <button class="btn btn-custom-primary" data-bs-toggle="modal" data-bs-target="#add-volunteer-modal">
+            <i class="bi bi-person-plus me-1"></i>Add Volunteer
+          </button>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-glass">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Full Name</th>
+                <th>Username</th>
+                <th>Assigned Event</th>
+                <th>Mobile</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="volunteers-table-body">
+              <!-- Rendered by app.js -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================
+         VIEW 8: SETTINGS & APPS SCRIPT WEB APP INTEGRATION
+         =================================================================== -->
+    <section id="settings-view" class="view-section d-none animate-fade-in">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <div class="glass-card p-4 p-md-5">
+            <h3 class="font-weight-bold mb-3"><i class="bi bi-gear-fill me-2 text-primary"></i>System & Google Apps Script Connection</h3>
+            <p class="text-secondary text-sm mb-4">Connect your Google Sheets database & automated Gmail dispatch by entering your deployed Google Apps Script Web App URL below.</p>
+
+            <form id="settings-form">
+              <div class="mb-4">
+                <label for="settings-site-url" class="form-label">Live Deployed Website Domain URL (Vercel / Host)</label>
+                <input type="url" id="settings-site-url" class="form-control" placeholder="https://event-management-system-chi-seven.vercel.app">
+                <small class="text-muted d-block mt-1">Used for generating clickable WhatsApp registration links for students.</small>
+              </div>
+
+              <div class="mb-4">
+                <label for="settings-webapp-url" class="form-label">Google Apps Script Web App URL</label>
+                <input type="url" id="settings-webapp-url" class="form-control" placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+                <small class="text-muted d-block mt-1">Found in `backend/Code.gs` -> Deploy as Web App -> Access: Anyone.</small>
+              </div>
+
+              <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-custom-primary">Save Settings</button>
+                <a href="backend/Code.gs" target="_blank" class="btn btn-custom-outline">View Code.gs File</a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================================================================
+       MODALS
+       =================================================================== -->
+
+  <!-- MODAL 1: ID Card Download Preview Modal -->
+  <div class="modal fade" id="id-card-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-card-heading me-2 text-primary"></i>Event Entry Pass ID Card</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center p-4">
+          <div id="id-card-render-box" class="id-card-preview-wrapper">
+            <!-- Dynamically rendered card preview -->
+          </div>
+        </div>
+        <div class="modal-footer border-top border-glass justify-content-center gap-2">
+          <button type="button" class="btn btn-custom-primary py-2 px-4" onclick="CardGenerator.downloadIdCard()">
+            <i class="bi bi-download me-2"></i>Download High-Res ID Card (PNG)
+          </button>
+          <button type="button" class="btn btn-custom-outline py-2" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 2: Login Modal -->
+  <div class="modal fade" id="login-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-shield-lock me-2 text-primary"></i>Secure Portal Login</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="login-form">
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label for="login-username" class="form-label">Username</label>
+              <input type="text" id="login-username" class="form-control" placeholder="Enter username" required>
+            </div>
+            <div class="mb-3">
+              <label for="login-password" class="form-label">Password</label>
+              <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+            </div>
+          </div>
+          <div class="modal-footer border-top border-glass">
+            <button type="submit" class="btn btn-custom-primary w-100">Login</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 3: Create / Edit Event Modal -->
+  <div class="modal fade" id="create-event-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-calendar-plus me-2 text-primary"></i>Manage Event Details</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="event-form" onsubmit="EventManagerModule.handleCreateOrUpdate(event)">
+          <input type="hidden" id="event-form-id">
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label for="event-form-title" class="form-label">Event Title <span class="text-danger">*</span></label>
+              <input type="text" id="event-form-title" class="form-control" placeholder="e.g. Annual TechFest 2026" required>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label for="event-form-date" class="form-label">Date <span class="text-danger">*</span></label>
+                <input type="date" id="event-form-date" class="form-control" required>
+              </div>
+              <div class="col-6">
+                <label for="event-form-time" class="form-label">Time <span class="text-danger">*</span></label>
+                <input type="text" id="event-form-time" class="form-control" placeholder="09:30 AM" required>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="event-form-venue" class="form-label">Venue <span class="text-danger">*</span></label>
+              <input type="text" id="event-form-venue" class="form-control" placeholder="e.g. Main Auditorium" required>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-6">
+                <label for="event-form-category" class="form-label">Category</label>
+                <select id="event-form-category" class="form-select">
+                  <option value="Technical">Technical</option>
+                  <option value="Cultural">Cultural</option>
+                  <option value="Hackathon">Hackathon</option>
+                  <option value="Workshop">Workshop</option>
+                  <option value="Sports">Sports</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label for="event-form-maxseats" class="form-label">Max Seats</label>
+                <input type="number" id="event-form-maxseats" class="form-control" value="500">
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-top border-glass">
+            <button type="submit" class="btn btn-custom-primary w-100">Save Event</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 4: Delete Event Confirmation Modal -->
+  <div class="modal fade" id="delete-event-confirm-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold text-danger"><i class="bi bi-exclamation-triangle-fill me-2"></i>Confirm Event Deletion</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4 text-center">
+          <p>Are you sure you want to delete <strong id="delete-event-name-text">this event</strong>?</p>
+          <p class="text-muted text-sm m-0">Event details and attendance records will be safely archived before removal.</p>
+        </div>
+        <div class="modal-footer border-top border-glass">
+          <button type="button" class="btn btn-danger w-100" onclick="EventManagerModule.confirmDelete()">Yes, Safely Delete & Archive</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 5: Manual Attendance Override Modal -->
+  <div class="modal fade" id="manual-attendance-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-person-check-fill me-2 text-success"></i>Manual Attendance Override</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="manual-att-form" onsubmit="AttendanceModule.submitManualAttendance(event)">
+          <input type="hidden" id="manual-att-eventid">
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label class="form-label">Student Name</label>
+              <input type="text" id="manual-att-name" class="form-control" readonly>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Hall Ticket Number</label>
+              <input type="text" id="manual-att-ht" class="form-control" readonly>
+            </div>
+            <div class="mb-3">
+              <label for="manual-att-reason" class="form-label">Reason / Remark</label>
+              <input type="text" id="manual-att-reason" class="form-control" placeholder="e.g. Physical ID verified manually" required>
+            </div>
+          </div>
+          <div class="modal-footer border-top border-glass">
+            <button type="submit" class="btn btn-success w-100">Confirm Mark Present</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 6: Add Volunteer Modal -->
+  <div class="modal fade" id="add-volunteer-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-person-plus-fill me-2 text-primary"></i>Add Volunteer Scanner Account</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="add-volunteer-form" onsubmit="App.handleAddVolunteerSubmit(event)">
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label for="vol-fullname" class="form-label">Full Name <span class="text-danger">*</span></label>
+              <input type="text" id="vol-fullname" class="form-control" placeholder="e.g. Rahul Sharma" required>
+            </div>
+            <div class="mb-3">
+              <label for="vol-username" class="form-label">Username <span class="text-danger">*</span></label>
+              <input type="text" id="vol-username" class="form-control" placeholder="e.g. rahul_scanner" required>
+            </div>
+            <div class="mb-3">
+              <label for="vol-password" class="form-label">Password</label>
+              <input type="password" id="vol-password" class="form-control" placeholder="Default: VOL123456">
+            </div>
+            <div class="mb-3">
+              <label for="volunteer-event-assign" class="form-label">Assign Specific Event</label>
+              <select id="volunteer-event-assign" class="form-select">
+                <option value="">-- All Events --</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer border-top border-glass">
+            <button type="submit" class="btn btn-custom-primary w-100">Create Volunteer Account</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL 7: Share Event & Poster QR Code Modal -->
+  <div class="modal fade" id="event-share-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-bottom border-glass">
+          <h5 class="modal-title font-weight-bold"><i class="bi bi-share-fill me-2 text-success"></i>Share Event & Poster QR Code</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center p-4">
+          <h4 id="share-modal-title" class="font-weight-bold mb-1">Event Title</h4>
+          <p id="share-modal-subtitle" class="text-sm text-secondary mb-3">Scan QR code or use WhatsApp link to register</p>
+
+          <!-- Poster Registration QR Box -->
+          <div class="d-flex justify-content-center mb-3">
+            <div id="share-modal-qr-container" class="bg-white p-3 rounded-4 shadow"></div>
+          </div>
+
+          <!-- Direct Shareable Link Input -->
+          <div class="input-group mb-3">
+            <input type="text" id="share-modal-link-input" class="form-control form-control-sm text-sm" readonly>
+            <button class="btn btn-sm btn-custom-outline" onclick="EventManagerModule.copyShareModalLink()"><i class="bi bi-clipboard me-1"></i>Copy</button>
+          </div>
+
+          <div class="d-grid gap-2">
+            <button id="btn-share-modal-whatsapp" class="btn btn-success py-2 font-weight-bold">
+              <i class="bi bi-whatsapp me-2"></i>Send Registration Link via WhatsApp
+            </button>
+            <button class="btn btn-custom-outline py-2" onclick="EventManagerModule.downloadPosterQr()">
+              <i class="bi bi-download me-2"></i>Download Poster QR Code (PNG)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Application JS Modules -->
+  <script src="js/config.js"></script>
+  <script src="js/apiService.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/registration.js"></script>
+  <script src="js/cardGenerator.js"></script>
+  <script src="js/qrScanner.js"></script>
+  <script src="js/eventManager.js"></script>
+  <script src="js/attendance.js"></script>
+  <script src="js/analytics.js"></script>
+  <script src="js/reports.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
