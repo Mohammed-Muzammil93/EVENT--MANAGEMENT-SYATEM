@@ -105,15 +105,29 @@ const ApiService = {
    */
   async getEventById(eventId) {
     const apiUrl = this.getApiUrl();
-    console.log("[EventSync] getEventById() called for Event ID:", eventId, "| API URL:", apiUrl || "(not configured)");
+    console.log("[EventSync] getEventById() called.", "\n  Event ID:", eventId, "\n  API URL:", apiUrl || "(not configured)");
+
     if (apiUrl) {
+      const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
+      console.log("[EventSync] Fetching event from:", fetchUrl);
       try {
-        const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
-        console.log("[EventSync] Fetching event directly from:", fetchUrl);
         const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
-        console.log("[EventSync] API response status:", response.status, response.statusText);
+        console.log("[EventSync] getEventById response — Status:", response.status, response.statusText, "| URL:", fetchUrl);
+
         const text = await response.text();
-        console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
+        console.log("[EventSync] getEventById raw response (first 500 chars):", text.substring(0, 500));
+
+        if (!response.ok) {
+          console.error(
+            "[EventSync] getEventById HTTP error.",
+            "\n  Requested Event ID:", eventId,
+            "\n  Fetch URL:", fetchUrl,
+            "\n  HTTP Status:", response.status, response.statusText,
+            "\n  Response body:", text.substring(0, 300)
+          );
+          return { status: "error", code: "HTTP_ERROR", message: `Server returned HTTP ${response.status}: ${response.statusText}` };
+        }
+
         try {
           const json = JSON.parse(text);
           if (json && json.status === "success" && json.event) {
@@ -123,18 +137,45 @@ const ApiService = {
           } else if (Array.isArray(json)) {
             const found = json.find(e => e.id.toUpperCase() === eventId.toUpperCase());
             if (found) return found;
+            console.error(
+              "[EventSync] getEventById: event ID not found in array response.",
+              "\n  Requested Event ID:", eventId,
+              "\n  Array length:", json.length,
+              "\n  Available IDs:", json.map(e => e.id).join(", ") || "(none)"
+            );
+          } else {
+            console.error(
+              "[EventSync] getEventById: unexpected response shape.",
+              "\n  Requested Event ID:", eventId,
+              "\n  Parsed response:", JSON.stringify(json).substring(0, 200)
+            );
           }
           return json;
         } catch (parseErr) {
-          console.error("[EventSync] Failed to parse API response JSON:", parseErr);
+          console.error(
+            "[EventSync] getEventById: failed to parse API response as JSON.",
+            "\n  Requested Event ID:", eventId,
+            "\n  Fetch URL:", fetchUrl,
+            "\n  Parse error:", parseErr.message,
+            "\n  Raw response:", text.substring(0, 300)
+          );
           return { status: "error", code: "PARSE_ERROR", message: "Failed to parse database response." };
         }
       } catch (err) {
-        console.error("[EventSync] Direct event fetch FAILED:", err.message || err);
+        console.error(
+          "[EventSync] getEventById: network/fetch error.",
+          "\n  Requested Event ID:", eventId,
+          "\n  Fetch URL:", fetchUrl,
+          "\n  Error:", err.message || err
+        );
         return { status: "error", code: "DB_CONNECTION_FAIL", message: "Database connection failed." };
       }
     } else {
-      console.warn("[EventSync] No API URL configured for direct event lookup.");
+      console.error(
+        "[EventSync] getEventById: no API URL configured — cannot reach production database.",
+        "\n  Requested Event ID:", eventId,
+        "\n  Fix: Set the Google Apps Script Web App URL in Settings or via the API_URL environment variable."
+      );
       return { status: "error", code: "NO_API_URL", message: "Database connection failed (API URL not configured)." };
     }
   },

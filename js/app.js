@@ -49,17 +49,8 @@ const App = {
     this.bindEvents();
     this.seedInitialData();
 
-    // Parse backend URL from query parameter if present (to auto-configure guest/student devices)
-    const params = new URLSearchParams(window.location.search);
-    const backendUrl = params.get("backend") || params.get("backendUrl");
-    if (backendUrl) {
-      const currentSettings = ApiService.getSettings();
-      if (currentSettings.webAppUrl !== backendUrl) {
-        currentSettings.webAppUrl = backendUrl;
-        ApiService.saveSettings(currentSettings);
-        console.log("Auto-configured backend Web App URL from link parameter:", backendUrl);
-      }
-    }
+    // NOTE: Backend URL auto-configuration from `?backend=` query param is
+    // handled in handleUrlQueryParams() below, which runs after events are loaded.
 
     // Clean up old demo events from local storage cache
     const localEvents = ApiService.getLocal(STORAGE_KEYS.EVENTS, []);
@@ -97,12 +88,50 @@ const App = {
   },
 
   async handleUrlQueryParams(eventsList) {
+    // -------------------------------------------------------------------------
+    // STRICT URL PARAMETER EXTRACTION
+    // Use window.location.search exclusively (not href) so that nested query
+    // strings embedded inside other params (e.g. backend=https://...?action=X)
+    // cannot corrupt our own parameter values.
+    // -------------------------------------------------------------------------
     const searchString = window.location.search || "";
     const params = new URLSearchParams(searchString);
-    const eventParamVal = params.get("event");
-    const eventIdParamVal = params.get("eventId");
-    const targetEventId = (eventParamVal || eventIdParamVal || "").trim();
-    const backendUrl = (params.get("backend") || params.get("backendUrl") || "").trim();
+
+    // Extract the event ID strictly from the `event` or `eventId` param only.
+    // Do NOT rely on any secondary splitting; URLSearchParams handles encoding.
+    const rawEventParam = params.get("event") || params.get("eventId") || "";
+
+    // Safely decode to handle percent-encoded characters (e.g. %2D -> -)
+    let targetEventId = "";
+    if (rawEventParam) {
+      try {
+        targetEventId = decodeURIComponent(rawEventParam).trim();
+      } catch (decodeErr) {
+        // Fallback: use raw value if decoding fails (malformed encoding)
+        console.error(
+          "[EventLookup] WARNING: Could not decodeURIComponent the event param.",
+          "Raw value:", rawEventParam, "Error:", decodeErr
+        );
+        targetEventId = rawEventParam.trim();
+      }
+    }
+
+    // Extract backend URL param (kept separate from event resolution)
+    let backendUrl = "";
+    const rawBackend = params.get("backend") || params.get("backendUrl") || "";
+    if (rawBackend) {
+      try {
+        backendUrl = decodeURIComponent(rawBackend).trim();
+      } catch (_) {
+        backendUrl = rawBackend.trim();
+      }
+    }
+
+    console.log(
+      "[EventLookup] URL parsed — event param:", JSON.stringify(rawEventParam),
+      "| decoded event ID:", JSON.stringify(targetEventId),
+      "| backend param present:", !!backendUrl
+    );
 
     const bannerEl = document.getElementById("direct-event-banner");
     const errorEl = document.getElementById("direct-event-error");
@@ -113,13 +142,13 @@ const App = {
     if (bannerEl) bannerEl.classList.add("d-none");
     if (errorEl) errorEl.classList.add("d-none");
 
-    // Auto-configure API URL if passed in link parameter
+    // Auto-configure API URL if passed in link parameter (device bootstrap)
     if (backendUrl) {
       const currentSettings = ApiService.getSettings();
       if (currentSettings.webAppUrl !== backendUrl) {
         currentSettings.webAppUrl = backendUrl;
         ApiService.saveSettings(currentSettings);
-        console.log("[EventLookup Trace] Auto-configured backend Web App URL:", backendUrl);
+        console.log("[EventLookup] Auto-configured backend Web App URL from link param:", backendUrl);
       }
     }
 
@@ -127,7 +156,7 @@ const App = {
 
     // No event parameter in URL: show default dropdown selection
     if (!targetEventId) {
-      console.log("[EventLookup Trace] No event parameter in URL. Fallback to full dropdown selection.");
+      console.log("[EventLookup] No event parameter in URL. Showing full dropdown selection.");
       let allEvents = eventsList || [];
       if (!allEvents.length) {
         try {
@@ -141,8 +170,8 @@ const App = {
       return;
     }
 
-    // Target event ID exists in URL: proceed with database lookup
-    console.log("[EventLookup Trace] Direct URL parameter detected. Looking up Event ID:", targetEventId);
+    // Target event ID confirmed — proceed with database lookup
+    console.log("[EventLookup] Looking up Event ID in database:", targetEventId);
 
     // Show loading state in banner if available
     if (bannerEl) {
@@ -157,35 +186,65 @@ const App = {
 
     let targetEv = null;
 
-    // 1. Try local list check first
+    // 1. Try local list check first (fast path — avoids a network round-trip)
     let events = eventsList || [];
     targetEv = events.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
+    if (targetEv) {
+      console.log("[EventLookup] Found event in local cache:", targetEv.id);
+    }
 
     // 2. Query production database directly via ApiService.getEventById
     if (!targetEv) {
+      console.log("[EventLookup] Not in local cache. Querying database directly for ID:", targetEventId);
       try {
         const result = await ApiService.getEventById(targetEventId);
         if (result && result.id) {
           targetEv = result;
+          console.log("[EventLookup] getEventById() returned a match:", result.id);
+        } else {
+          console.error(
+            "[EventLookup] getEventById() returned no match.",
+            "\n  Requested Event ID:", targetEventId,
+            "\n  API response:", JSON.stringify(result).substring(0, 200)
+          );
         }
       } catch (err) {
-        console.error("[EventLookup Trace] Direct getEventById API call failed:", err);
+        console.error(
+          "[EventLookup] getEventById() threw an exception.",
+          "\n  Requested Event ID:", targetEventId,
+          "\n  Error:", err.message || err
+        );
       }
     }
 
-    // 3. Fallback: try fetching full events list from backend
+    // 3. Fallback: try fetching full events list from backend and searching within it
     if (!targetEv) {
+      console.log("[EventLookup] Falling back to getEvents() list search for ID:", targetEventId);
       try {
         const freshEvents = await ApiService.getEvents();
         targetEv = freshEvents.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
+        if (targetEv) {
+          console.log("[EventLookup] Found event via getEvents() list fallback:", targetEv.id);
+        } else {
+          console.error(
+            "[EventLookup] getEvents() list fallback also returned no match.",
+            "\n  Requested Event ID:", targetEventId,
+            "\n  Total events in response:", freshEvents.length,
+            "\n  Available IDs:", freshEvents.map(e => e.id).join(", ") || "(none)"
+          );
+        }
       } catch (err) {
-        console.error("[EventLookup Trace] getEvents API fallback failed:", err);
+        console.error(
+          "[EventLookup] getEvents() fallback threw an exception.",
+          "\n  Requested Event ID:", targetEventId,
+          "\n  Error:", err.message || err
+        );
       }
     }
 
     // RESULT 1: SUCCESS - Event found in database!
     if (targetEv) {
-      console.log("[EventLookup Trace] SUCCESS! Event loaded automatically:", targetEv.title);
+      console.log("[EventLookup] SUCCESS! Event loaded automatically:", targetEv.title, "(ID:", targetEv.id + ")");
 
       // Populate & Display Direct Event Banner
       if (bannerEl) {
@@ -232,8 +291,14 @@ const App = {
       this.showToast("Event Loaded", `Auto-loaded event: ${targetEv.title}`, "info");
 
     } else {
-      // RESULT 2: ERROR - Event ID genuinely does not exist in DB (e.g. deleted or invalid)
-      console.error("[EventLookup Trace] FAILURE: Event ID not found in database:", targetEventId);
+      // RESULT 2: ERROR - Event ID genuinely does not exist in DB (e.g. deleted or invalid link)
+      console.error(
+        "[EventLookup] FAILURE: Event not found after all lookup strategies.",
+        "\n  Requested Event ID (decoded):", targetEventId,
+        "\n  Raw URL ?event= param value:", rawEventParam,
+        "\n  Full window.location.search:", searchString,
+        "\n  Strategies tried: (1) local cache, (2) getEventById, (3) getEvents list"
+      );
 
       if (bannerEl) bannerEl.classList.add("d-none");
 

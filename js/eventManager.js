@@ -92,41 +92,56 @@ const EventManagerModule = {
   },
 
   getShareableUrl(eventId) {
+    // -------------------------------------------------------------------------
+    // CLEAN SHARE URL GENERATOR
+    // Generates a clean shareable URL in the format:
+    //   ${origin}/?event=${eventId}
+    //
+    // The backend API URL is intentionally NOT appended to share links because:
+    //   1. Google Apps Script URLs contain their own `?action=...` query params
+    //      which can corrupt URL parsing when embedded as a query value.
+    //   2. It exposes the internal backend URL in every public QR code/WhatsApp.
+    //   3. The backend URL is configured persistently in Settings / environment
+    //      variables — student devices do not need it passed per-link.
+    // -------------------------------------------------------------------------
     const settings = ApiService.getSettings();
     let base = settings.siteUrl ? settings.siteUrl.trim() : "";
 
     const hostname = window.location.hostname || "";
     const isLocal = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname.startsWith("192.168.") || hostname.startsWith("10.") || window.location.protocol === "file:";
 
-    // If siteUrl is empty OR points to localhost/127.0.0.1 while running locally, ensure a public HTTPS domain is used for sharing
+    // If siteUrl is empty OR points to localhost while running locally, fall
+    // back to the current origin (when deployed) or the canonical production URL.
     if (!base || (isLocal && (base.includes("localhost") || base.includes("127.0.0.1")))) {
       if (!isLocal && window.location.origin && !window.location.origin.startsWith("file")) {
-        base = window.location.origin + window.location.pathname;
+        base = window.location.origin;
       } else {
-        base = "https://event-management-system-chi-seven.vercel.app/index.html";
+        base = "https://event-management-system-chi-seven.vercel.app";
       }
+    }
+
+    // Strip any trailing path / filename so the URL resolves to the root
+    try {
+      const parsed = new URL(base);
+      // Use only origin (scheme + host + port); drop any path/query/fragment
+      base = parsed.origin;
+    } catch (_) {
+      // base is not a full URL yet — strip protocol prefix for the next check
     }
 
     if (!base.startsWith("http://") && !base.startsWith("https://")) {
       base = "https://" + base;
     }
 
-    const apiUrl = ApiService.getApiUrl();
-
+    // Build clean URL: <origin>/?event=<eventId>
+    // Only the `event` param is included — backend URL is never embedded.
     try {
-      const url = new URL(base, window.location.href);
+      const url = new URL("/", base);
       url.searchParams.set("event", eventId);
-      if (apiUrl) {
-        url.searchParams.set("backend", apiUrl);
-      }
       return url.href;
     } catch (e) {
-      const sep = base.includes("?") ? "&" : "?";
-      let res = `${base}${sep}event=${encodeURIComponent(eventId)}`;
-      if (apiUrl) {
-        res += `&backend=${encodeURIComponent(apiUrl)}`;
-      }
-      return res;
+      // Fallback for environments where URL constructor is unavailable
+      return `${base}/?event=${encodeURIComponent(eventId)}`;
     }
   },
 
