@@ -44,20 +44,75 @@ const ApiService = {
   getSettings() {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     const envApiUrl = (typeof window !== "undefined" && window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : "";
-    const defaults = { webAppUrl: envApiUrl, siteUrl: "https://event-management-system-chi-seven.vercel.app", autoSync: true, theme: "dark" };
+    const canonicalSiteUrl = "https://event-management-system-chi-seven.vercel.app";
+    const defaults = { webAppUrl: envApiUrl, siteUrl: canonicalSiteUrl, autoSync: true, theme: "dark" };
     if (!data) return defaults;
     const parsed = JSON.parse(data);
+
+    // --- siteUrl sanitization ---
+    // siteUrl must only be an origin (scheme+host), never a full URL with query params.
+    // Strip any path/query/fragment that could have been saved from a poisoned share link.
+    if (parsed.siteUrl) {
+      try {
+        const su = new URL(parsed.siteUrl);
+        // Reject if it looks like a share link (contains ?event=) or is not the production origin
+        if (su.searchParams.has("event") || su.searchParams.has("backend") || su.searchParams.has("eventId")) {
+          console.warn("[Settings] siteUrl contains event params — resetting to canonical URL:", parsed.siteUrl);
+          parsed.siteUrl = canonicalSiteUrl;
+        } else {
+          parsed.siteUrl = su.origin; // strip path/query/fragment, keep only origin
+        }
+      } catch (_) {
+        parsed.siteUrl = canonicalSiteUrl;
+      }
+    } else {
+      parsed.siteUrl = canonicalSiteUrl;
+    }
+
+    // Auto-migrate: replace any old netlify domain cached in localStorage
+    if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
+      parsed.siteUrl = canonicalSiteUrl;
+    }
+
+    // --- webAppUrl sanitization ---
+    // webAppUrl must point to the Google Apps Script exec endpoint.
+    // Reject any URL that:
+    //   (a) Contains '?event=' or '?eventId=' (it is a share link, not an API URL)
+    //   (b) Matches the Vercel site URL (it is the frontend, not the backend)
+    //   (c) Does not contain 'script.google.com' (not a valid Apps Script URL)
+    //       UNLESS the operator set a custom API URL via environment variable.
+    if (parsed.webAppUrl) {
+      const wau = parsed.webAppUrl.trim();
+      let invalidWebAppUrl = false;
+      try {
+        const wauParsed = new URL(wau);
+        if (
+          wauParsed.searchParams.has("event") ||
+          wauParsed.searchParams.has("eventId") ||
+          wauParsed.searchParams.has("backend") ||
+          wau.includes("vercel.app") ||
+          wau.includes("netlify.app")
+        ) {
+          invalidWebAppUrl = true;
+        }
+      } catch (_) {
+        invalidWebAppUrl = true; // not a valid URL at all
+      }
+
+      if (invalidWebAppUrl) {
+        console.warn("[Settings] webAppUrl appears to be a poisoned share link, not an API URL — clearing it:", wau);
+        parsed.webAppUrl = envApiUrl; // fall back to environment variable
+      }
+    }
+
+    // If no webAppUrl set, use environment variable
     if (!parsed.webAppUrl && envApiUrl) {
       parsed.webAppUrl = envApiUrl;
     }
-    if (!parsed.siteUrl) parsed.siteUrl = defaults.siteUrl;
-    // Auto-migrate: replace any old netlify domain cached in localStorage
-    if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
-      parsed.siteUrl = defaults.siteUrl;
-      this.saveSettings(parsed);
-    }
+
     return parsed;
   },
+
 
   saveSettings(settings) {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
@@ -105,15 +160,29 @@ const ApiService = {
    */
   async getEventById(eventId) {
     const apiUrl = this.getApiUrl();
-    console.log("[EventSync] getEventById() called for Event ID:", eventId, "| API URL:", apiUrl || "(not configured)");
+    console.log("[EventSync] getEventById() called.", "\n  Event ID:", eventId, "\n  API URL:", apiUrl || "(not configured)");
+
     if (apiUrl) {
+      const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
+      console.log("[EventSync] Fetching event from:", fetchUrl);
       try {
-        const fetchUrl = `${apiUrl}?action=getEvent&eventId=${encodeURIComponent(eventId)}`;
-        console.log("[EventSync] Fetching event directly from:", fetchUrl);
         const response = await fetch(fetchUrl, { method: "GET", redirect: "follow" });
-        console.log("[EventSync] API response status:", response.status, response.statusText);
+        console.log("[EventSync] getEventById response — Status:", response.status, response.statusText, "| URL:", fetchUrl);
+
         const text = await response.text();
-        console.log("[EventSync] API raw response (first 500 chars):", text.substring(0, 500));
+        console.log("[EventSync] getEventById raw response (first 500 chars):", text.substring(0, 500));
+
+        if (!response.ok) {
+          console.error(
+            "[EventSync] getEventById HTTP error.",
+            "\n  Requested Event ID:", eventId,
+            "\n  Fetch URL:", fetchUrl,
+            "\n  HTTP Status:", response.status, response.statusText,
+            "\n  Response body:", text.substring(0, 300)
+          );
+          return { status: "error", code: "HTTP_ERROR", message: `Server returned HTTP ${response.status}: ${response.statusText}` };
+        }
+
         try {
           const json = JSON.parse(text);
           if (json && json.status === "success" && json.event) {
@@ -123,18 +192,45 @@ const ApiService = {
           } else if (Array.isArray(json)) {
             const found = json.find(e => e.id.toUpperCase() === eventId.toUpperCase());
             if (found) return found;
+            console.error(
+              "[EventSync] getEventById: event ID not found in array response.",
+              "\n  Requested Event ID:", eventId,
+              "\n  Array length:", json.length,
+              "\n  Available IDs:", json.map(e => e.id).join(", ") || "(none)"
+            );
+          } else {
+            console.error(
+              "[EventSync] getEventById: unexpected response shape.",
+              "\n  Requested Event ID:", eventId,
+              "\n  Parsed response:", JSON.stringify(json).substring(0, 200)
+            );
           }
           return json;
         } catch (parseErr) {
-          console.error("[EventSync] Failed to parse API response JSON:", parseErr);
+          console.error(
+            "[EventSync] getEventById: failed to parse API response as JSON.",
+            "\n  Requested Event ID:", eventId,
+            "\n  Fetch URL:", fetchUrl,
+            "\n  Parse error:", parseErr.message,
+            "\n  Raw response:", text.substring(0, 300)
+          );
           return { status: "error", code: "PARSE_ERROR", message: "Failed to parse database response." };
         }
       } catch (err) {
-        console.error("[EventSync] Direct event fetch FAILED:", err.message || err);
+        console.error(
+          "[EventSync] getEventById: network/fetch error.",
+          "\n  Requested Event ID:", eventId,
+          "\n  Fetch URL:", fetchUrl,
+          "\n  Error:", err.message || err
+        );
         return { status: "error", code: "DB_CONNECTION_FAIL", message: "Database connection failed." };
       }
     } else {
-      console.warn("[EventSync] No API URL configured for direct event lookup.");
+      console.error(
+        "[EventSync] getEventById: no API URL configured — cannot reach production database.",
+        "\n  Requested Event ID:", eventId,
+        "\n  Fix: Set the Google Apps Script Web App URL in Settings or via the API_URL environment variable."
+      );
       return { status: "error", code: "NO_API_URL", message: "Database connection failed (API URL not configured)." };
     }
   },

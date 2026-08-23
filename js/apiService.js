@@ -44,20 +44,75 @@ const ApiService = {
   getSettings() {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     const envApiUrl = (typeof window !== "undefined" && window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : "";
-    const defaults = { webAppUrl: envApiUrl, siteUrl: "https://event-management-system-chi-seven.vercel.app", autoSync: true, theme: "dark" };
+    const canonicalSiteUrl = "https://event-management-system-chi-seven.vercel.app";
+    const defaults = { webAppUrl: envApiUrl, siteUrl: canonicalSiteUrl, autoSync: true, theme: "dark" };
     if (!data) return defaults;
     const parsed = JSON.parse(data);
+
+    // --- siteUrl sanitization ---
+    // siteUrl must only be an origin (scheme+host), never a full URL with query params.
+    // Strip any path/query/fragment that could have been saved from a poisoned share link.
+    if (parsed.siteUrl) {
+      try {
+        const su = new URL(parsed.siteUrl);
+        // Reject if it looks like a share link (contains ?event=) or is not the production origin
+        if (su.searchParams.has("event") || su.searchParams.has("backend") || su.searchParams.has("eventId")) {
+          console.warn("[Settings] siteUrl contains event params — resetting to canonical URL:", parsed.siteUrl);
+          parsed.siteUrl = canonicalSiteUrl;
+        } else {
+          parsed.siteUrl = su.origin; // strip path/query/fragment, keep only origin
+        }
+      } catch (_) {
+        parsed.siteUrl = canonicalSiteUrl;
+      }
+    } else {
+      parsed.siteUrl = canonicalSiteUrl;
+    }
+
+    // Auto-migrate: replace any old netlify domain cached in localStorage
+    if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
+      parsed.siteUrl = canonicalSiteUrl;
+    }
+
+    // --- webAppUrl sanitization ---
+    // webAppUrl must point to the Google Apps Script exec endpoint.
+    // Reject any URL that:
+    //   (a) Contains '?event=' or '?eventId=' (it is a share link, not an API URL)
+    //   (b) Matches the Vercel site URL (it is the frontend, not the backend)
+    //   (c) Does not contain 'script.google.com' (not a valid Apps Script URL)
+    //       UNLESS the operator set a custom API URL via environment variable.
+    if (parsed.webAppUrl) {
+      const wau = parsed.webAppUrl.trim();
+      let invalidWebAppUrl = false;
+      try {
+        const wauParsed = new URL(wau);
+        if (
+          wauParsed.searchParams.has("event") ||
+          wauParsed.searchParams.has("eventId") ||
+          wauParsed.searchParams.has("backend") ||
+          wau.includes("vercel.app") ||
+          wau.includes("netlify.app")
+        ) {
+          invalidWebAppUrl = true;
+        }
+      } catch (_) {
+        invalidWebAppUrl = true; // not a valid URL at all
+      }
+
+      if (invalidWebAppUrl) {
+        console.warn("[Settings] webAppUrl appears to be a poisoned share link, not an API URL — clearing it:", wau);
+        parsed.webAppUrl = envApiUrl; // fall back to environment variable
+      }
+    }
+
+    // If no webAppUrl set, use environment variable
     if (!parsed.webAppUrl && envApiUrl) {
       parsed.webAppUrl = envApiUrl;
     }
-    if (!parsed.siteUrl) parsed.siteUrl = defaults.siteUrl;
-    // Auto-migrate: replace any old netlify domain cached in localStorage
-    if (parsed.siteUrl && parsed.siteUrl.includes("netlify.app")) {
-      parsed.siteUrl = defaults.siteUrl;
-      this.saveSettings(parsed);
-    }
+
     return parsed;
   },
+
 
   saveSettings(settings) {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));

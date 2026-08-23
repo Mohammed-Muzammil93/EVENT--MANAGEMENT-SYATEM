@@ -107,7 +107,6 @@ const App = {
       try {
         targetEventId = decodeURIComponent(rawEventParam).trim();
       } catch (decodeErr) {
-        // Fallback: use raw value if decoding fails (malformed encoding)
         console.error(
           "[EventLookup] WARNING: Could not decodeURIComponent the event param.",
           "Raw value:", rawEventParam, "Error:", decodeErr
@@ -116,21 +115,51 @@ const App = {
       }
     }
 
-    // Extract backend URL param (kept separate from event resolution)
+    // -------------------------------------------------------------------------
+    // BACKEND URL: Validate before saving to localStorage
+    // Only accept a backend URL if it looks like a genuine Google Apps Script
+    // exec endpoint. Reject any URL that:
+    //   - Contains ?event= or ?eventId= (it is a forwarded share link, not API)
+    //   - Is the Vercel/Netlify frontend URL
+    //   - Does not contain script.google.com
+    // This prevents recursive/nested URL poisoning of localStorage.webAppUrl.
+    // -------------------------------------------------------------------------
     let backendUrl = "";
     const rawBackend = params.get("backend") || params.get("backendUrl") || "";
     if (rawBackend) {
+      let decoded = rawBackend;
       try {
-        backendUrl = decodeURIComponent(rawBackend).trim();
+        decoded = decodeURIComponent(rawBackend).trim();
       } catch (_) {
-        backendUrl = rawBackend.trim();
+        decoded = rawBackend.trim();
+      }
+
+      // Validate: must be a Google Apps Script exec URL
+      let isValidBackend = false;
+      try {
+        const bParsed = new URL(decoded);
+        const isAppsScript = bParsed.hostname.includes("script.google.com");
+        const hasEventParam = bParsed.searchParams.has("event") || bParsed.searchParams.has("eventId");
+        const isFrontend = decoded.includes("vercel.app") || decoded.includes("netlify.app");
+        isValidBackend = isAppsScript && !hasEventParam && !isFrontend;
+      } catch (_) {
+        isValidBackend = false;
+      }
+
+      if (isValidBackend) {
+        backendUrl = decoded;
+      } else {
+        console.warn(
+          "[EventLookup] 🚫 Rejected invalid/poisoned backend URL param (not a valid Apps Script URL):",
+          decoded.substring(0, 120)
+        );
       }
     }
 
     console.log(
       "[EventLookup] URL parsed — event param:", JSON.stringify(rawEventParam),
       "| decoded event ID:", JSON.stringify(targetEventId),
-      "| backend param present:", !!backendUrl
+      "| backend valid:", !!backendUrl
     );
 
     const bannerEl = document.getElementById("direct-event-banner");
@@ -142,13 +171,13 @@ const App = {
     if (bannerEl) bannerEl.classList.add("d-none");
     if (errorEl) errorEl.classList.add("d-none");
 
-    // Auto-configure API URL if passed in link parameter (device bootstrap)
+    // Auto-configure API URL ONLY if validated backend URL was found
     if (backendUrl) {
       const currentSettings = ApiService.getSettings();
       if (currentSettings.webAppUrl !== backendUrl) {
         currentSettings.webAppUrl = backendUrl;
         ApiService.saveSettings(currentSettings);
-        console.log("[EventLookup] Auto-configured backend Web App URL from link param:", backendUrl);
+        console.log("[EventLookup] Auto-configured backend Web App URL from validated link param:", backendUrl);
       }
     }
 
@@ -170,8 +199,13 @@ const App = {
       return;
     }
 
-    // Target event ID confirmed — proceed with database lookup
-    console.log("[EventLookup] Looking up Event ID in database:", targetEventId);
+    // -------------------------------------------------------------------------
+    // EVENT ID IS AUTHORITATIVE — THE URL EVENT ID WINS OVER ALL CACHED STATE
+    // -------------------------------------------------------------------------
+    console.log(
+      "[EVENT DEBUG] Step 1 — URL event ID (authoritative):", targetEventId,
+      "\n[EVENT DEBUG] Step 2 — API URL for database lookup:", ApiService.getApiUrl() || "(not configured)"
+    );
 
     // Show loading state in banner if available
     if (bannerEl) {
@@ -185,67 +219,88 @@ const App = {
     }
 
     let targetEv = null;
+    let lookupError = null; // tracks whether failure was network vs not-found
 
     // 1. Try local list check first (fast path — avoids a network round-trip)
     let events = eventsList || [];
     targetEv = events.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
     if (targetEv) {
-      console.log("[EventLookup] Found event in local cache:", targetEv.id);
+      console.log("[EVENT DEBUG] Step 3 — Found in local cache:", targetEv.id);
     }
 
     // 2. Query production database directly via ApiService.getEventById
     if (!targetEv) {
-      console.log("[EventLookup] Not in local cache. Querying database directly for ID:", targetEventId);
+      console.log("[EVENT DEBUG] Step 3 — Not in local cache. Querying database for ID:", targetEventId);
       try {
         const result = await ApiService.getEventById(targetEventId);
         if (result && result.id) {
           targetEv = result;
-          console.log("[EventLookup] getEventById() returned a match:", result.id);
+          console.log("[EVENT DEBUG] Step 4 — getEventById() returned match:", result.id);
+        } else if (result && result.code === "NO_API_URL") {
+          lookupError = "no_api_url";
+          console.error("[EVENT DEBUG] Step 4 — API URL not configured. Cannot reach database.");
+        } else if (result && result.code === "DB_CONNECTION_FAIL") {
+          lookupError = "network";
+          console.error("[EVENT DEBUG] Step 4 — Network error reaching database.");
         } else {
           console.error(
-            "[EventLookup] getEventById() returned no match.",
-            "\n  Requested Event ID:", targetEventId,
-            "\n  API response:", JSON.stringify(result).substring(0, 200)
+            "[EVENT DEBUG] Step 4 — getEventById() returned no match.",
+            "\n  Requested:", targetEventId,
+            "\n  Response:", JSON.stringify(result).substring(0, 200)
           );
         }
       } catch (err) {
-        console.error(
-          "[EventLookup] getEventById() threw an exception.",
-          "\n  Requested Event ID:", targetEventId,
-          "\n  Error:", err.message || err
-        );
+        lookupError = "network";
+        console.error("[EVENT DEBUG] Step 4 — getEventById() threw:", err.message || err);
       }
     }
 
     // 3. Fallback: try fetching full events list from backend and searching within it
-    if (!targetEv) {
-      console.log("[EventLookup] Falling back to getEvents() list search for ID:", targetEventId);
+    if (!targetEv && lookupError !== "no_api_url") {
+      console.log("[EVENT DEBUG] Step 5 — Fallback: getEvents() list search for ID:", targetEventId);
       try {
         const freshEvents = await ApiService.getEvents();
+        // STRICT MATCH: only use the event whose ID exactly matches the URL event ID
         targetEv = freshEvents.find(e => e.id.toUpperCase() === targetEventId.toUpperCase());
         if (targetEv) {
-          console.log("[EventLookup] Found event via getEvents() list fallback:", targetEv.id);
+          console.log("[EVENT DEBUG] Step 5 — Found via getEvents() list:", targetEv.id);
         } else {
           console.error(
-            "[EventLookup] getEvents() list fallback also returned no match.",
-            "\n  Requested Event ID:", targetEventId,
-            "\n  Total events in response:", freshEvents.length,
+            "[EVENT DEBUG] Step 5 — getEvents() also returned no match.",
+            "\n  Requested:", targetEventId,
             "\n  Available IDs:", freshEvents.map(e => e.id).join(", ") || "(none)"
           );
         }
       } catch (err) {
+        lookupError = lookupError || "network";
+        console.error("[EVENT DEBUG] Step 5 — getEvents() threw:", err.message || err);
+      }
+    }
+
+    // -------------------------------------------------------------------------
+    // RESULT: SUCCESS — Event found and its ID matches exactly
+    // -------------------------------------------------------------------------
+    if (targetEv) {
+      // CRITICAL SAFETY CHECK: confirm the returned event ID matches what was requested
+      if (targetEv.id.toUpperCase() !== targetEventId.toUpperCase()) {
         console.error(
-          "[EventLookup] getEvents() fallback threw an exception.",
-          "\n  Requested Event ID:", targetEventId,
-          "\n  Error:", err.message || err
+          "[EVENT DEBUG] ❌ MISMATCH: Returned event ID does not match requested ID!",
+          "\n  Requested:", targetEventId,
+          "\n  Returned:", targetEv.id
+        );
+        // Reject the wrong event — do not display it
+        targetEv = null;
+      } else {
+        console.log(
+          "[EVENT DEBUG] ✅ ALL MATCH — Event ID is consistent end-to-end.",
+          "\n  URL event ID:", targetEventId,
+          "\n  Database event ID:", targetEv.id,
+          "\n  Event title:", targetEv.title
         );
       }
     }
 
-    // RESULT 1: SUCCESS - Event found in database!
     if (targetEv) {
-      console.log("[EventLookup] SUCCESS! Event loaded automatically:", targetEv.title, "(ID:", targetEv.id + ")");
-
       // Populate & Display Direct Event Banner
       if (bannerEl) {
         bannerEl.classList.remove("d-none");
@@ -288,25 +343,28 @@ const App = {
         hiddenInput.value = targetEv.id;
       }
 
-      this.showToast("Event Loaded", `Auto-loaded event: ${targetEv.title}`, "info");
+      this.showToast("Event Loaded", `Ready to register for: ${targetEv.title}`, "info");
 
     } else {
-      // RESULT 2: ERROR - Event ID genuinely does not exist in DB (e.g. deleted or invalid link)
-      console.error(
-        "[EventLookup] FAILURE: Event not found after all lookup strategies.",
-        "\n  Requested Event ID (decoded):", targetEventId,
-        "\n  Raw URL ?event= param value:", rawEventParam,
-        "\n  Full window.location.search:", searchString,
-        "\n  Strategies tried: (1) local cache, (2) getEventById, (3) getEvents list"
-      );
-
+      // -------------------------------------------------------------------------
+      // RESULT: FAILURE — Event not found. Show a precise error message.
+      // Never silently load a fallback/different event.
+      // -------------------------------------------------------------------------
       if (bannerEl) bannerEl.classList.add("d-none");
 
       if (errorEl) {
         errorEl.classList.remove("d-none");
         const msgEl = document.getElementById("direct-event-error-msg");
         if (msgEl) {
-          msgEl.innerText = `The shared event (ID: ${targetEventId}) was not found in the database. It may have been deleted by the organizer or the link is invalid.`;
+          let errorMsg = "";
+          if (lookupError === "no_api_url") {
+            errorMsg = `Registration portal is not connected to the database. Please ask the event organizer to configure the backend API URL in Settings.`;
+          } else if (lookupError === "network") {
+            errorMsg = `Could not connect to the database (network error). Please check your internet connection and try again. Event ID: ${targetEventId}`;
+          } else {
+            errorMsg = `The shared event (ID: ${targetEventId}) was not found in the database. It may have been deleted by the organizer, or the link may be invalid.`;
+          }
+          msgEl.innerText = errorMsg;
         }
       }
 
@@ -323,6 +381,7 @@ const App = {
       this.showToast("Event Not Found", `Event (ID: ${targetEventId}) was not found in database.`, "danger");
     }
   },
+
 
   seedInitialData() {
     const events = ApiService.getLocal(STORAGE_KEYS.EVENTS, null);
